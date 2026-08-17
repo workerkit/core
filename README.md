@@ -1,5 +1,10 @@
 # @workerkit/core
 
+[![CI](https://github.com/workerkit/core/actions/workflows/ci.yml/badge.svg)](https://github.com/workerkit/core/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/%40workerkit%2Fcore.svg?color=2ea44f)](https://www.npmjs.com/package/@workerkit/core)
+[![node](https://img.shields.io/node/v/%40workerkit%2Fcore.svg)](https://nodejs.org)
+[![license](https://img.shields.io/npm/l/%40workerkit%2Fcore.svg)](LICENSE)
+
 The shareable [WorkerKit](https://workerkit.ai) surface: an HTTP API client, the
 declarative tool-descriptor registry (22 authenticated fleet-management tools +
 5 anonymous kits-directory tools), and the single wire-execution path that turns
@@ -56,9 +61,29 @@ whole-call deadline, bounded retries for idempotent methods only, a streamed
 response-size cap, and quota/rate-limit header extraction. `scrubSecrets` helps
 keep credentials out of logs.
 
+## Development
+
+```bash
+git clone https://github.com/workerkit/core.git && cd core
+npm ci
+npm test            # descriptor-contract suite
+npm run typecheck
+npm run build
+```
+
+Issues and pull requests are welcome. Every tool is a declarative `ToolDescriptor`;
+the descriptor-contract tests pin each one's exact wire call, so behavior changes
+are visible in the diff. Security reports go to [SECURITY.md](SECURITY.md), not the
+issue tracker.
+
+Releases are tag-driven: maintainers push a `vX.Y.Z` tag and CI publishes to npm
+via [trusted publishing](https://docs.npmjs.com/trusted-publishers) with a
+provenance attestation. No npm tokens exist for this package.
+
 ## Links
 
 - WorkerKit: <https://workerkit.ai>
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
 - [Terms of Service](https://workerkit.ai/terms) · [Privacy Policy](https://workerkit.ai/privacy) ·
   [Acceptable Use Policy](https://workerkit.ai/aup) · [Security Overview](https://workerkit.ai/security)
 

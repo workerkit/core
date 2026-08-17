@@ -1,0 +1,13 @@
+# Keep the exact-pinned dependency set and the workflow actions current.
+# Monthly cadence: this package has two runtime deps and low churn; noise
+# would train people to ignore the PRs.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: monthly
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
