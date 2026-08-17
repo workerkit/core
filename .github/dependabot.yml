@@ -1,13 +1,20 @@
 # Keep the exact-pinned dependency set and the workflow actions current.
-# Monthly cadence: this package has two runtime deps and low churn; noise
-# would train people to ignore the PRs.
+# Monthly cadence and minor/patch only: this package has two runtime deps and
+# low churn; major bumps (zod 4, undici 8, ...) are breaking-change reviews a
+# human schedules deliberately, not PRs to rubber-stamp.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: "/"
     schedule:
       interval: monthly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: monthly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
