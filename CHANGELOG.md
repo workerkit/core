@@ -4,6 +4,15 @@ All notable changes to `@workerkit/core` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the package adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.3] - 2026-08-17
+
+### Changed
+
+- First release published through npm trusted publishing (OIDC from GitHub
+  Actions), so this version carries a **provenance attestation** linking the
+  published tarball to the commit and workflow that built it. No npm token is
+  involved in releases from here on. No code changes.
+
 ## [0.1.2] - 2026-08-17
 
 ### Changed
