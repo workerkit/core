@@ -1,0 +1,12 @@
+{
+  // Typecheck-only config covering tests as well as src. `npm run build` (tsc
+  // over src) stays the emit path; this one exists because tests are excluded
+  // there, so without it type errors in test files are caught by no gate.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

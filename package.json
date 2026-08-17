@@ -1,0 +1,62 @@
+{
+  "name": "@workerkit/core",
+  "version": "0.1.2",
+  "description": "API client and tool descriptors for WorkerKit: manage AI workers and browse the public kits directory",
+  "type": "module",
+  "license": "MIT",
+  "author": "WorkerKit <support@workerkit.ai>",
+  "homepage": "https://workerkit.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/workerkit/core.git"
+  },
+  "bugs": {
+    "url": "https://github.com/workerkit/core/issues",
+    "email": "support@workerkit.ai"
+  },
+  "keywords": [
+    "workerkit",
+    "ai-workers",
+    "ai-agents",
+    "agents",
+    "automation",
+    "api-client",
+    "tool-descriptors",
+    "mcp",
+    "model-context-protocol"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "undici": "7.29.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}
