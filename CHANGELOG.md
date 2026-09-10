@@ -6,55 +6,56 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-10
+
+### Fixed
+
+- 0.2.0 was published without the `delivery_secret_rotate` descriptor (42
+  manager descriptors instead of 43). 0.2.1 is the complete build; 0.2.0 is
+  deprecated.
+
+## [0.2.0] - 2026-09-10
+
 ### Added
 
-- Eleven manager tool descriptors, bringing the MCP/CLI surface to parity with
-  the Workers Management REST API: `key_info` (what the presented key is and
-  which scopes it carries — the call to make first), the two fleet-watching
-  reads `runs_feed` (account-wide cursor-paged run feed) and `fleet_pulse`
-  (every run in flight, capped at 100, no paging), the instruction-history trio
-  `instruction_versions` / `instruction_version_get` / `instruction_restore`
-  (restore APPENDS a new current version, so a rollback is itself reversible),
-  and the run-result delivery family `delivery_list`, `delivery_channels`,
-  `delivery_create`, `delivery_update`, `delivery_delete` (at-most-once,
-  platform-level sends detached from the worker's own permissions; availability
-  judged at ACCOUNT level; max 5 destinations per worker; `channel` immutable
-  after create).
-- Nine more manager tool descriptors, covering two-way runs, worker creation by
-  cloning, and the spend ceilings: `run_question` / `run_answer` (a run that
-  needs something from its owner ENDS by asking — answering does not resume it
-  but mints a LINKED follow-on run, so the run id changes, the follow-on passes
-  the same pre-flight gauntlet and can still come back Skipped, answering twice
-  is idempotent, and a chain at `maxChainDepth` records the answer and refuses
-  with `chain_limit`); `worker_clone_preview` / `worker_clone` /
-  `worker_clone_bulk` (a clone copies only permissions a human already approved
-  on the source; schedules arrive DISABLED, agent-authored facts never travel, a
-  webhook destination arrives unarmed, `rawKey` is shown once, bulk is NOT
-  atomic — read `items[]`, not the status code — and is capped at 20 per call);
-  and `budget_get` / `budget_set` / `fleet_budget_get` / `fleet_budget_set`
-  (`maxRunsPerDay` null means the PLATFORM DEFAULT rather than unlimited,
-  `maxConcurrentRuns` is fixed at 1, a dollar cap on a worker with no hosted
-  deployment is a 400, omitted PATCH fields mean unchanged, a fleet ceiling is
-  removed with its `clear…` flag because null cannot mean both, zero means STOP,
-  and a breach only refuses runs: nothing is paused and every worker's own API
-  key keeps working).
-- `delivery_secret_rotate`: mints a new signing secret for a webhook destination
-  and returns it once. Also the way a cloned webhook destination is armed, since
-  a clone arrives disabled with no secret and `delivery_update` refuses to
-  enable it before one exists.
-- The `webhook` delivery channel on `delivery_create` (`target.url`, https and
-  public only; the response carries `signingSecret` once) and its semantics on
-  the delivery hints: refused runs reach webhook destinations as `run.blocked`
-  once per worker per reason per day, a run that stopped to ask its owner a
-  question (`AwaitingInput`) reaches every channel, and `failureOnly` means
-  "needs attention" (failures, questions, and on a webhook, refusals).
-- `budget_set` gains the question timeout (`awaitInputTimeoutMinutes`,
-  `clearAwaitInputTimeout`; an expired question is closed out and never resumed
-  without an answer, though a late answer still starts the run); a zero per-run cap
-  is now a 400 rather than a worker that can never start. `run_answer` retries
-  after a Skipped resume and reports `answer_in_progress` (409) on a race
-  instead of `already_answered`. The registry now ships **43 manager + 5
-  anonymous** descriptors.
+Twenty-one manager tool descriptors, bringing the MCP and CLI surface to parity
+with the Workers Management REST API. The registry now ships 43 manager and
+5 anonymous descriptors.
+
+- **Key.** `key_info`: what the presented key is and which scopes it carries.
+  The call to make first.
+- **Fleet-wide runs.** `runs_feed`, one account-wide cursor-paged feed that
+  `wait` turns into a long poll, and `fleet_pulse`, every run in flight (capped
+  at 100).
+- **Two-way runs.** `run_question` and `run_answer`. A run that needs something
+  from its owner ends by asking; answering mints a linked follow-on run, so the
+  run id changes. The follow-on passes the same pre-flight checks and can come
+  back Skipped, in which case the question can be answered again. A chain at
+  `maxChainDepth` records the answer and refuses with `chain_limit`; two
+  simultaneous answers resolve with `answer_in_progress`.
+- **Run-result deliveries.** `delivery_list`, `delivery_channels`,
+  `delivery_create`, `delivery_update`, `delivery_secret_rotate` and
+  `delivery_delete`. Sends are platform-level and at most once, availability is
+  judged at account level, a worker holds at most five destinations, and
+  `channel` is immutable after create. The `webhook` channel takes `target.url`
+  (https, public addresses only), returns `signingSecret` once on create and on
+  rotate, and receives the typed run event. `failureOnly` covers everything that
+  needs attention: failures, a run waiting on an answer, and on a webhook,
+  refused runs (delivered as `run.blocked`, once per worker per reason per day).
+- **Instruction history.** `instruction_versions`, `instruction_version_get` and
+  `instruction_restore`. Restore appends a new current version, so a rollback is
+  itself reversible.
+- **Creation by cloning.** `worker_clone_preview`, `worker_clone` and
+  `worker_clone_bulk`. A clone carries only permissions a human already approved
+  on the source; schedules arrive disabled, agent-authored facts stay behind, a
+  webhook destination arrives unarmed until its secret is rotated, and the raw
+  key is shown once. Bulk is capped at 20 per call and is not atomic: read
+  `items[]`.
+- **Budgets.** `budget_get`, `budget_set`, `fleet_budget_get` and
+  `fleet_budget_set`. Omitted fields are unchanged, a fleet ceiling is removed
+  with its `clear…` flag, and zero means stop. A breach refuses runs and pauses
+  nothing, so every worker's own key keeps working. `budget_set` also carries the
+  question timeout (`awaitInputTimeoutMinutes`, `clearAwaitInputTimeout`).
 
 ## [0.1.3] - 2026-08-17
 
