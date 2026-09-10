@@ -8,7 +8,7 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: read
+  contents: write # gh release create
   id-token: write
 
 jobs:
@@ -29,3 +29,12 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm publish --provenance --access public
+      # The version is on npm; record it on GitHub too, with the matching CHANGELOG section as
+      # the notes, so the Releases page tracks what npm serves instead of needing a manual step.
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" 'index($0, "## [" v "]") == 1 {f=1; next} /^## \[/ {f=0} f' CHANGELOG.md > release-notes.md
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md --latest --verify-tag
