@@ -10,7 +10,7 @@ import {
   type ToolDescriptor,
 } from "../src/index.js";
 
-// The wire contract, pinned per descriptor: for all 27 tools, executeTool
+// The wire contract, pinned per descriptor: for all 47 tools, executeTool
 // against a recording fake client must produce exactly the {method, path,
 // query/opts, body} the live server produces today. Expected values are
 // derived from the server suite's manage-tools/directory tests so the two
@@ -67,12 +67,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 22 manager + 5 anonymous descriptors, names unique, byName agrees", () => {
-    expect(manageDescriptors).toHaveLength(22);
+  it("ships exactly 43 manager + 5 anonymous descriptors, names unique, byName agrees", () => {
+    expect(manageDescriptors).toHaveLength(43);
     expect(directoryDescriptors).toHaveLength(5);
-    expect(allDescriptors).toHaveLength(27);
+    expect(allDescriptors).toHaveLength(48);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(27);
+    expect(new Set(names).size).toBe(48);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -81,19 +81,24 @@ describe("registry", () => {
     for (const descriptor of directoryDescriptors) expect(descriptor.auth).toBe("anonymous");
   });
 
-  it("pins {auth, method} for every one of the 27 descriptors", () => {
+  it("pins {auth, method} for every one of the 48 descriptors", () => {
     // The full name → auth/method table. A new/renamed tool or a changed verb
     // must show up here explicitly — no descriptor ships with an unpinned method.
     expect(
       allDescriptors.map((x) => `${x.name} ${x.auth} ${x.method}`).sort()
     ).toEqual(
       [
+        "key_info manager get",
         "workers_list manager get",
         "worker_get manager get",
         "worker_run manager post",
+        "runs_feed manager get",
+        "fleet_pulse manager get",
         "worker_runs manager get",
         "run_get manager get",
         "run_events manager get",
+        "run_question manager get",
+        "run_answer manager post",
         "run_cancel manager post",
         "run_clear_digest manager delete",
         "run_score manager put",
@@ -105,11 +110,27 @@ describe("registry", () => {
         "schedule_create manager post",
         "schedule_update manager patch",
         "schedule_delete manager delete",
+        "delivery_list manager get",
+        "delivery_channels manager get",
+        "delivery_create manager post",
+        "delivery_update manager patch",
+        "delivery_secret_rotate manager post",
+        "delivery_delete manager delete",
         "instruction_get manager get",
         "instruction_set manager put",
+        "instruction_versions manager get",
+        "instruction_version_get manager get",
+        "instruction_restore manager post",
         "worker_set_enabled manager post",
         "kit_install_preview manager get",
         "kit_install manager post",
+        "worker_clone_preview manager post",
+        "worker_clone manager post",
+        "worker_clone_bulk manager post",
+        "budget_get manager get",
+        "budget_set manager patch",
+        "fleet_budget_get manager get",
+        "fleet_budget_set manager patch",
         "directory_overview anonymous get",
         "kits_search anonymous get",
         "kit_get anonymous get",
@@ -134,6 +155,14 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
     expect(c.opts.token).toBe("pe_mgr_unit_test");
   });
 
+  it("key_info GETs the key-info route with an empty query", async () => {
+    const c = await run(d("key_info"), {}, "pe_mgr_unit_test");
+    expect(c.method).toBe("get");
+    expect(c.path).toBe("/api/manage/workers/key-info");
+    expect(c.opts.params).toEqual({});
+    expect(c.opts.token).toBe("pe_mgr_unit_test");
+  });
+
   it("worker_get embeds tokenId in the path and sends no query", async () => {
     const c = await run(d("worker_get"), { tokenId: 7 });
     expect(c.method).toBe("get");
@@ -153,6 +182,20 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
     expect(c.method).toBe("get");
     expect(c.path).toBe("/api/manage/workers/7/runs");
     expect(c.opts.params).toEqual({ status: "failed", page: 2, pageSize: 10 });
+  });
+
+  it("runs_feed is account-wide: no worker id in the path, filters straight through as query", async () => {
+    const c = await run(d("runs_feed"), { status: "settled", cursor: "opaque-cursor", limit: 50 });
+    expect(c.method).toBe("get");
+    expect(c.path).toBe("/api/manage/workers/runs");
+    expect(c.opts.params).toEqual({ status: "settled", cursor: "opaque-cursor", limit: 50 });
+  });
+
+  it("fleet_pulse GETs the account pulse with an empty query", async () => {
+    const c = await run(d("fleet_pulse"), {});
+    expect(c.method).toBe("get");
+    expect(c.path).toBe("/api/manage/workers/fleet/pulse");
+    expect(c.opts.params).toEqual({});
   });
 
   it("run_get / run_cancel / run_clear_digest address runs by UUID", async () => {
@@ -188,6 +231,21 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
     expect(c.method).toBe("get");
     expect(c.path).toBe(`/api/manage/workers/runs/${RUN_ID}/events`);
     expect(c.opts.params).toEqual({ afterSeq: 41, limit: 100 });
+  });
+
+  it("run_question GETs the question route with an empty query; run_answer POSTs {answer} to /input", async () => {
+    const q = await run(d("run_question"), { runId: RUN_ID });
+    expect(q.method).toBe("get");
+    expect(q.path).toBe(`/api/manage/workers/runs/${RUN_ID}/question`);
+    expect(q.opts.params).toEqual({});
+
+    const a = await run(d("run_answer"), { runId: RUN_ID, answer: "Use the Acme account." });
+    expect(a.method).toBe("post");
+    // The answer route is /input, NOT /question — reading and answering are different paths.
+    expect(a.path).toBe(`/api/manage/workers/runs/${RUN_ID}/input`);
+    expect(a.opts.body).toEqual({ answer: "Use the Acme account." });
+    // runId stays in the path; the body carries the answer alone.
+    expect(a.opts.body).not.toHaveProperty("runId");
   });
 
   it("memory_get GETs the memory block with an empty query", async () => {
@@ -264,6 +322,77 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
     expect(wireBody(body)).toEqual({ timeZoneId: "", isEnabled: false });
   });
 
+  it("delivery_list / delivery_channels GET their routes with an empty query", async () => {
+    const list = await run(d("delivery_list"), { tokenId: 3 });
+    expect(list.method).toBe("get");
+    expect(list.path).toBe("/api/manage/workers/3/deliveries");
+    expect(list.opts.params).toEqual({});
+
+    const channels = await run(d("delivery_channels"), { tokenId: 3 });
+    expect(channels.method).toBe("get");
+    expect(channels.path).toBe("/api/manage/workers/3/deliveries/channels");
+    expect(channels.opts.params).toEqual({});
+  });
+
+  it("delivery_create POSTs the destination without tokenId, target nested verbatim", async () => {
+    const c = await run(d("delivery_create"), {
+      tokenId: 3,
+      channel: "slack",
+      condition: "failureOnly",
+      contentMode: "summary",
+      target: { channelId: "C0123", workspaceId: "T0456" },
+      isEnabled: true,
+    });
+    expect(c.method).toBe("post");
+    expect(c.path).toBe("/api/manage/workers/3/deliveries");
+    const body = c.opts.body as Record<string, unknown>;
+    expect(body).not.toHaveProperty("tokenId");
+    expect(wireBody(body)).toEqual({
+      channel: "slack",
+      condition: "failureOnly",
+      contentMode: "summary",
+      target: { channelId: "C0123", workspaceId: "T0456" },
+      isEnabled: true,
+    });
+  });
+
+  it("delivery_update PATCHes by id and carries NO channel — the channel is immutable", async () => {
+    const c = await run(d("delivery_update"), { tokenId: 3, deliveryId: 9, isEnabled: false });
+    expect(c.method).toBe("patch");
+    expect(c.path).toBe("/api/manage/workers/3/deliveries/9");
+    const body = c.opts.body as Record<string, unknown>;
+    expect(body).not.toHaveProperty("channel");
+    expect(body).not.toHaveProperty("tokenId");
+    expect(body).not.toHaveProperty("deliveryId");
+    expect(wireBody(body)).toEqual({ isEnabled: false });
+    // No channel parameter exists to send in the first place.
+    expect(d("delivery_update").schema).not.toHaveProperty("channel");
+  });
+
+  it("delivery_delete DELETEs by path only", async () => {
+    const c = await run(d("delivery_delete"), { tokenId: 3, deliveryId: 9 });
+    expect(c.method).toBe("delete");
+    expect(c.path).toBe("/api/manage/workers/3/deliveries/9");
+    expect(c.opts.body).toBeUndefined();
+  });
+
+  it("the instruction-history trio addresses versions by number; restore POSTs an empty body", async () => {
+    const list = await run(d("instruction_versions"), { tokenId: 3 });
+    expect(list.method).toBe("get");
+    expect(list.path).toBe("/api/manage/workers/3/instruction/versions");
+    expect(list.opts.params).toEqual({});
+
+    const one = await run(d("instruction_version_get"), { tokenId: 3, versionNumber: 4 });
+    expect(one.method).toBe("get");
+    expect(one.path).toBe("/api/manage/workers/3/instruction/versions/4");
+    expect(one.opts.params).toEqual({});
+
+    const restored = await run(d("instruction_restore"), { tokenId: 3, versionNumber: 4 });
+    expect(restored.method).toBe("post");
+    expect(restored.path).toBe("/api/manage/workers/3/instruction/versions/4/restore");
+    expect(restored.opts.body).toEqual({});
+  });
+
   it("instruction_get GETs by path; instruction_set PUTs the lean body without tokenId", async () => {
     const g = await run(d("instruction_get"), { tokenId: 3 });
     expect(g.method).toBe("get");
@@ -323,6 +452,97 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
     });
   });
 
+  it("worker_clone_preview and worker_clone POST the same body to /clone/preview and /clone", async () => {
+    const params = {
+      tokenId: 7,
+      title: "Triage — EMEA",
+      includeInstruction: true,
+      includeMemory: true,
+      includeSchedules: true,
+      includeDeliveries: false,
+      includeDeployment: true,
+      resourceId: RESOURCE_ID,
+    };
+
+    const preview = await run(d("worker_clone_preview"), params);
+    expect(preview.method).toBe("post");
+    expect(preview.path).toBe("/api/manage/workers/7/clone/preview");
+
+    const clone = await run(d("worker_clone"), params);
+    expect(clone.method).toBe("post");
+    expect(clone.path).toBe("/api/manage/workers/7/clone");
+
+    // One body shape serves both, and tokenId never leaves the path.
+    const expected = {
+      title: "Triage — EMEA",
+      includeInstruction: true,
+      includeMemory: true,
+      includeSchedules: true,
+      includeDeliveries: false,
+      includeDeployment: true,
+      resourceId: RESOURCE_ID,
+    };
+    expect(wireBody(preview.opts.body)).toEqual(expected);
+    expect(wireBody(clone.opts.body)).toEqual(expected);
+    expect(clone.opts.body).not.toHaveProperty("tokenId");
+  });
+
+  it("worker_clone_bulk nests the entries under workers[] and sends nothing else", async () => {
+    const c = await run(d("worker_clone_bulk"), {
+      tokenId: 7,
+      workers: [
+        { title: "Triage — EMEA", includeSchedules: false },
+        { title: "Triage — APAC" },
+      ],
+    });
+    expect(c.method).toBe("post");
+    expect(c.path).toBe("/api/manage/workers/7/clone/bulk");
+    expect(wireBody(c.opts.body)).toEqual({
+      workers: [
+        { title: "Triage — EMEA", includeSchedules: false },
+        { title: "Triage — APAC" },
+      ],
+    });
+    expect(c.opts.body).not.toHaveProperty("tokenId");
+  });
+
+  it("budget_get GETs with an empty query; budget_set PATCHes only the fields sent", async () => {
+    const g = await run(d("budget_get"), { tokenId: 7 });
+    expect(g.method).toBe("get");
+    expect(g.path).toBe("/api/manage/workers/7/budget");
+    expect(g.opts.params).toEqual({});
+
+    const s = await run(d("budget_set"), { tokenId: 7, maxRunsPerDay: 25 });
+    expect(s.method).toBe("patch");
+    expect(s.path).toBe("/api/manage/workers/7/budget");
+    const body = s.opts.body as Record<string, unknown>;
+    expect(body).not.toHaveProperty("tokenId");
+    // Omitted = unchanged: the untouched ceilings must not reach the wire at all.
+    expect(wireBody(body)).toEqual({ maxRunsPerDay: 25 });
+  });
+
+  it("fleet_budget_get/set are account-wide: no worker id, and the clear flags survive", async () => {
+    const g = await run(d("fleet_budget_get"), {});
+    expect(g.method).toBe("get");
+    expect(g.path).toBe("/api/manage/workers/fleet/budget");
+    expect(g.opts.params).toEqual({});
+
+    const s = await run(d("fleet_budget_set"), {
+      maxUsdPerMonth: 250,
+      clearMaxUsdPerDay: true,
+      clearMaxUsdPerMonth: false,
+    });
+    expect(s.method).toBe("patch");
+    expect(s.path).toBe("/api/manage/workers/fleet/budget");
+    // clearMaxUsdPerDay:true and clearMaxUsdPerMonth:false are both meaningful —
+    // false must survive as false, and an absent ceiling must stay absent.
+    expect(wireBody(s.opts.body)).toEqual({
+      maxUsdPerMonth: 250,
+      clearMaxUsdPerDay: true,
+      clearMaxUsdPerMonth: false,
+    });
+  });
+
   it("kit slug schemas refuse dot segments and anything off the slug alphabet", () => {
     // encodeURIComponent leaves dots intact and the URL parser collapses "."/".."
     // segments before the request leaves the process — the schema is the guard.
@@ -341,6 +561,8 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
       const params: Record<string, unknown> = {
         tokenId: 1, runId: RUN_ID, itemId: 1, scheduleId: 1, kind: "rule",
         text: "x", slug: "a", content: "x", enabled: true, score: 1,
+        deliveryId: 1, versionNumber: 1, channel: "slack", target: { channelId: "C1" },
+        answer: "x", title: "x", workers: [{ title: "x" }],
       };
       const c = await run(descriptor, params, "pe_mgr_token_pin");
       expect(c.opts.token, descriptor.name).toBe("pe_mgr_token_pin");
