@@ -5,6 +5,7 @@ import {
   directoryDescriptors,
   executeTool,
   manageDescriptors,
+  z,
   type ApiResult,
   type PortEdenClient,
   type ToolDescriptor,
@@ -67,12 +68,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 43 manager + 5 anonymous descriptors, names unique, byName agrees", () => {
-    expect(manageDescriptors).toHaveLength(43);
-    expect(directoryDescriptors).toHaveLength(5);
-    expect(allDescriptors).toHaveLength(48);
+  it("ships exactly 68 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
+    expect(manageDescriptors).toHaveLength(68);
+    expect(directoryDescriptors).toHaveLength(9);
+    expect(allDescriptors).toHaveLength(77);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(48);
+    expect(new Set(names).size).toBe(77);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -81,7 +82,7 @@ describe("registry", () => {
     for (const descriptor of directoryDescriptors) expect(descriptor.auth).toBe("anonymous");
   });
 
-  it("pins {auth, method} for every one of the 48 descriptors", () => {
+  it("pins {auth, method} for every one of the 77 descriptors", () => {
     // The full name → auth/method table. A new/renamed tool or a changed verb
     // must show up here explicitly — no descriptor ships with an unpinned method.
     expect(
@@ -131,10 +132,39 @@ describe("registry", () => {
         "budget_set manager patch",
         "fleet_budget_get manager get",
         "fleet_budget_set manager patch",
+        "worker_permissions_get manager get",
+        "publisher_get_mine manager get",
+        "publisher_set manager put",
+        "my_kits_list manager get",
+        "kit_validate manager post",
+        "kit_publish manager post",
+        "kit_update manager patch",
+        "kit_replace manager put",
+        "kit_scan_get manager get",
+        "kit_unpublish manager post",
+        "kit_relist manager post",
+        "kit_make_private manager post",
+        "kit_delete manager delete",
+        "apps_list manager get",
+        "app_connect manager post",
+        "app_disconnect manager delete",
+        "model_keys_list manager get",
+        "model_key_set manager put",
+        "model_key_delete manager delete",
+        "mcp_servers_list manager get",
+        "mcp_server_get manager get",
+        "mcp_server_create manager post",
+        "mcp_server_discover manager post",
+        "mcp_server_set_tools manager put",
+        "mcp_server_delete manager delete",
+        "workerkit_about anonymous get",
         "directory_overview anonymous get",
         "kits_search anonymous get",
         "kit_get anonymous get",
         "kit_stats anonymous get",
+        "kit_authoring_guide anonymous get",
+        "kit_vocabulary anonymous get",
+        "kit_app_tools anonymous get",
         "publisher_get anonymous get",
       ].sort()
     );
@@ -562,11 +592,197 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
         tokenId: 1, runId: RUN_ID, itemId: 1, scheduleId: 1, kind: "rule",
         text: "x", slug: "a", content: "x", enabled: true, score: 1,
         deliveryId: 1, versionNumber: 1, channel: "slack", target: { channelId: "C1" },
-        answer: "x", title: "x", workers: [{ title: "x" }],
+        answer: "x", title: "x", workers: [{ title: "x" }], kitRef: "my-kit",
       };
       const c = await run(descriptor, params, "pe_mgr_token_pin");
       expect(c.opts.token, descriptor.name).toBe("pe_mgr_token_pin");
     }
+  });
+});
+
+describe("kit authoring wire contract (the publishKits lane + the permissions read)", () => {
+  const body = {
+    name: "Standup Digest",
+    jobSentence: "Compiles the standup digest.",
+    categorySlugs: ["reporting"],
+    visibility: "private",
+    content: { instructionContent: "You are [worker-name].", appCodes: ["email"] },
+  };
+
+  it("worker_permissions_get GETs the worker's permissions with an empty query", async () => {
+    const c = await run(d("worker_permissions_get"), { tokenId: 42 }, "t");
+    expect(c.method).toBe("get");
+    expect(c.path).toBe("/api/manage/workers/42/permissions");
+    expect(c.opts.params).toEqual({});
+  });
+
+  it("publisher_get_mine / publisher_set / my_kits_list hit the literal routes beside {slug}", async () => {
+    expect((await run(d("publisher_get_mine"), {}, "t")).path).toBe("/api/manage/kits/publisher");
+    expect((await run(d("my_kits_list"), {}, "t")).path).toBe("/api/manage/kits/mine");
+    const c = await run(d("publisher_set"), { name: "Acme", isListed: false }, "t");
+    expect(c.method).toBe("put");
+    expect(c.path).toBe("/api/manage/kits/publisher");
+    expect(wireBody(c.opts.body)).toEqual({ name: "Acme", isListed: false });
+  });
+
+  it("kit_publish POSTs the body verbatim to the kits root", async () => {
+    const c = await run(d("kit_publish"), body, "t");
+    expect(c.method).toBe("post");
+    expect(c.path).toBe("/api/manage/kits");
+    expect(wireBody(c.opts.body)).toEqual(body);
+  });
+
+  it("kit_validate POSTs the same body, with kitRef promoted to the query and kept out of the body", async () => {
+    const fresh = await run(d("kit_validate"), body, "t");
+    expect(fresh.path).toBe("/api/manage/kits/validate");
+    expect(wireBody(fresh.opts.body)).toEqual(body);
+
+    const replacing = await run(d("kit_validate"), { ...body, kitRef: "my kit" }, "t");
+    expect(replacing.method).toBe("post");
+    expect(replacing.path).toBe("/api/manage/kits/validate?kitRef=my%20kit");
+    expect(wireBody(replacing.opts.body)).toEqual(body);
+  });
+
+  it("kit_update PATCHes and kit_replace PUTs the slug route, both without kitRef in the body", async () => {
+    const u = await run(d("kit_update"), { kitRef: "my-kit", name: "Renamed", contactAllowAll: false }, "t");
+    expect(u.method).toBe("patch");
+    expect(u.path).toBe("/api/manage/kits/my-kit");
+    expect(wireBody(u.opts.body)).toEqual({ name: "Renamed", contactAllowAll: false });
+
+    const r = await run(d("kit_replace"), { kitRef: "my-kit", ...body }, "t");
+    expect(r.method).toBe("put");
+    expect(r.path).toBe("/api/manage/kits/my-kit");
+    expect(wireBody(r.opts.body)).toEqual(body);
+  });
+
+  it("the lifecycle POSTs send an empty body and kit_delete sends none", async () => {
+    for (const [name, suffix] of [["kit_unpublish", "/unpublish"], ["kit_relist", "/relist"], ["kit_make_private", "/make-private"]]) {
+      const c = await run(d(name), { kitRef: "my-kit" }, "t");
+      expect(c.method, name).toBe("post");
+      expect(c.path, name).toBe(`/api/manage/kits/my-kit${suffix}`);
+      expect(wireBody(c.opts.body), name).toEqual({});
+    }
+    const del = await run(d("kit_delete"), { kitRef: "my-kit" }, "t");
+    expect(del.method).toBe("delete");
+    expect(del.path).toBe("/api/manage/kits/my-kit");
+    expect(del.opts.body).toBeUndefined();
+
+    const scan = await run(d("kit_scan_get"), { kitRef: "my-kit" }, "t");
+    expect(scan.path).toBe("/api/manage/kits/my-kit/scan");
+    expect(scan.opts.params).toEqual({});
+  });
+});
+
+describe("connected apps + model keys wire contract (the manageConnections lane)", () => {
+  const OPERATOR = "6e6f6f70-0000-4000-8000-00000000000a";
+
+  it("apps_list GETs the apps root, with operatorId as the only query param", async () => {
+    const all = await run(d("apps_list"), {}, "t");
+    expect(all.method).toBe("get");
+    expect(all.path).toBe("/api/manage/apps");
+    expect(all.opts.params).toEqual({});
+    const one = await run(d("apps_list"), { operatorId: OPERATOR }, "t");
+    expect(one.opts.params).toEqual({ operatorId: OPERATOR });
+  });
+
+  it("app_connect POSTs the provider route with the credential, label and operator in the body — never the provider", async () => {
+    const c = await run(d("app_connect"), { provider: "mcp:apify", credential: { token: "x" }, label: "ops", operatorId: OPERATOR }, "t");
+    expect(c.method).toBe("post");
+    expect(c.path).toBe("/api/manage/apps/mcp%3Aapify/connect");
+    expect(wireBody(c.opts.body)).toEqual({ credential: { token: "x" }, label: "ops", operatorId: OPERATOR });
+    const bare = await run(d("app_connect"), { provider: "telegram", credential: { botToken: "1:a" } }, "t");
+    expect(wireBody(bare.opts.body)).toEqual({ credential: { botToken: "1:a" } });
+  });
+
+  it("app_disconnect DELETEs the connection route, promoting the optional operator to the query", async () => {
+    const c = await run(d("app_disconnect"), { provider: "telegram", connectionId: "123 456" }, "t");
+    expect(c.method).toBe("delete");
+    expect(c.path).toBe("/api/manage/apps/telegram/connections/123%20456");
+    expect(c.opts.body).toBeUndefined();
+    const scoped = await run(d("app_disconnect"), { provider: "telegram", connectionId: "5", operatorId: OPERATOR }, "t");
+    expect(scoped.path).toBe(`/api/manage/apps/telegram/connections/5?operatorId=${OPERATOR}`);
+  });
+
+  it("model keys: list GETs with includeRevoked, set PUTs {apiKey, label} to the provider route, delete sends no body", async () => {
+    const list = await run(d("model_keys_list"), { includeRevoked: true }, "t");
+    expect(list.path).toBe("/api/manage/model-keys");
+    expect(list.opts.params).toEqual({ includeRevoked: true });
+
+    const set = await run(d("model_key_set"), { provider: "Anthropic", apiKey: "sk-ant-12345678", label: "prod" }, "t");
+    expect(set.method).toBe("put");
+    expect(set.path).toBe("/api/manage/model-keys/Anthropic");
+    expect(wireBody(set.opts.body)).toEqual({ apiKey: "sk-ant-12345678", label: "prod" });
+
+    const del = await run(d("model_key_delete"), { provider: "google" }, "t");
+    expect(del.method).toBe("delete");
+    expect(del.path).toBe("/api/manage/model-keys/google");
+    expect(del.opts.body).toBeUndefined();
+  });
+});
+
+describe("custom MCP servers wire contract (the account's own MCP apps, same lane)", () => {
+  const GATEWAY = "6e6f6f70-0000-4000-8000-00000000000b";
+  const OPERATOR = "6e6f6f70-0000-4000-8000-00000000000a";
+
+  it("mcp_servers_list GETs the root with no query; mcp_server_get GETs the handle", async () => {
+    const list = await run(d("mcp_servers_list"), {}, "t");
+    expect(list.method).toBe("get");
+    expect(list.path).toBe("/api/manage/mcp-servers");
+    expect(list.opts.params).toEqual({});
+
+    const one = await run(d("mcp_server_get"), { gatewayId: GATEWAY }, "t");
+    expect(one.method).toBe("get");
+    expect(one.path).toBe(`/api/manage/mcp-servers/${GATEWAY}`);
+    expect(one.opts.params).toEqual({});
+  });
+
+  it("mcp_server_create POSTs the root with only what was given (the server defaults the rest) and the credential in the body", async () => {
+    const bare = await run(d("mcp_server_create"), { name: "Acme", upstreamUrl: "https://mcp.acme.test/mcp" }, "t");
+    expect(bare.method).toBe("post");
+    expect(bare.path).toBe("/api/manage/mcp-servers");
+    expect(wireBody(bare.opts.body)).toEqual({ name: "Acme", upstreamUrl: "https://mcp.acme.test/mcp" });
+
+    const full = await run(d("mcp_server_create"), {
+      name: "Acme", upstreamUrl: "https://mcp.acme.test/mcp", authType: "Bearer", credentialScope: "account",
+      credential: { token: "x" }, operatorId: OPERATOR, connectionInstructions: "Settings → API", oauthScopes: "read", callTimeoutSeconds: 30,
+    }, "t");
+    expect(wireBody(full.opts.body)).toEqual({
+      name: "Acme", upstreamUrl: "https://mcp.acme.test/mcp", authType: "Bearer", credentialScope: "account",
+      credential: { token: "x" }, operatorId: OPERATOR, connectionInstructions: "Settings → API", oAuthScopes: "read", callTimeoutSeconds: 30,
+    });
+  });
+
+  it("mcp_server_create's schema pins the auth types and credential scopes the server accepts", () => {
+    const schema = z.object(d("mcp_server_create").schema);
+    const ok = schema.safeParse({ name: "Acme", upstreamUrl: "https://mcp.acme.test/mcp" });
+    expect(ok.success).toBe(true);
+    if (ok.success) expect(ok.data).toMatchObject({ authType: "None", credentialScope: "operator" });
+    expect(schema.safeParse({ name: "Acme", upstreamUrl: "https://mcp.acme.test/mcp", authType: "Magic" }).success).toBe(false);
+    expect(schema.safeParse({ name: "Acme", upstreamUrl: "https://mcp.acme.test/mcp", credentialScope: "team" }).success).toBe(false);
+    for (const authType of ["None", "Bearer", "ApiKeyHeader", "ApiKeyQuery", "Basic", "CustomHeaders", "McpOAuth"]) {
+      expect(schema.safeParse({ name: "Acme", upstreamUrl: "https://mcp.acme.test/mcp", authType }).success, authType).toBe(true);
+    }
+  });
+
+  it("mcp_server_discover and mcp_server_set_tools address the handle and carry only their body", async () => {
+    const discover = await run(d("mcp_server_discover"), { gatewayId: GATEWAY, operatorId: OPERATOR }, "t");
+    expect(discover.method).toBe("post");
+    expect(discover.path).toBe(`/api/manage/mcp-servers/${GATEWAY}/discover`);
+    expect(wireBody(discover.opts.body)).toEqual({ operatorId: OPERATOR });
+    const bareDiscover = await run(d("mcp_server_discover"), { gatewayId: GATEWAY }, "t");
+    expect(wireBody(bareDiscover.opts.body)).toEqual({});
+
+    const tools = await run(d("mcp_server_set_tools"), { gatewayId: GATEWAY, enabledToolIds: [12, 34] }, "t");
+    expect(tools.method).toBe("put");
+    expect(tools.path).toBe(`/api/manage/mcp-servers/${GATEWAY}/tools`);
+    expect(wireBody(tools.opts.body)).toEqual({ enabledToolIds: [12, 34] });
+  });
+
+  it("mcp_server_delete DELETEs the handle with no body", async () => {
+    const del = await run(d("mcp_server_delete"), { gatewayId: GATEWAY }, "t");
+    expect(del.method).toBe("delete");
+    expect(del.path).toBe(`/api/manage/mcp-servers/${GATEWAY}`);
+    expect(del.opts.body).toBeUndefined();
   });
 });
 
@@ -605,6 +821,35 @@ describe("anonymous wire contract (mirrors the server directory-tools suite)", (
     expect(c.method).toBe("get");
     expect(c.path).toBe("/api/directory/mcp/publishers/porteden");
     expect(c.opts.params).toEqual({ sort: "new", page: 1, pageSize: 20 });
+  });
+
+  it("kit_authoring_guide and kit_vocabulary GET the authoring routes with their one query param", async () => {
+    const guide = await run(d("kit_authoring_guide"), { section: "schema" });
+    expect(guide.method).toBe("get");
+    expect(guide.path).toBe("/api/directory/mcp/authoring/guide");
+    expect(guide.opts.params).toEqual({ section: "schema" });
+
+    const all = await run(d("kit_vocabulary"), {});
+    expect(all.path).toBe("/api/directory/mcp/authoring/vocabulary");
+    expect(all.opts.params).toEqual({});
+    const one = await run(d("kit_vocabulary"), { app: "email" });
+    expect(one.opts.params).toEqual({ app: "email" });
+
+    const tools = await run(d("kit_app_tools"), {});
+    expect(tools.method).toBe("get");
+    expect(tools.path).toBe("/api/directory/mcp/authoring/tools");
+    expect(tools.opts.params).toEqual({});
+    expect((await run(d("kit_app_tools"), { app: "slack" })).opts.params).toEqual({ app: "slack" });
+  });
+
+  it("workerkit_about GETs the about route, first in the registry, with its one query param", async () => {
+    expect(directoryDescriptors[0].name).toBe("workerkit_about");
+
+    const index = await run(d("workerkit_about"), {});
+    expect(index.method).toBe("get");
+    expect(index.path).toBe("/api/directory/mcp/about");
+    expect(index.opts.params).toEqual({});
+    expect((await run(d("workerkit_about"), { section: "why" })).opts.params).toEqual({ section: "why" });
   });
 
   it("passes no token through executeTool when none is given", async () => {

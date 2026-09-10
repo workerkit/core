@@ -1,4 +1,4 @@
-// The 42 authenticated fleet-management tools, as pure descriptors. The
+// The 62 authenticated fleet-management tools, as pure descriptors. The
 // descriptions ARE the product surface: they are served verbatim to MCP
 // clients (and any future CLI help), so every contract nuance an agent must
 // not get wrong is taught here.
@@ -69,7 +69,7 @@ const getWorker: ToolDescriptor = {
   name: "worker_get",
   title: "Get Worker",
   description:
-    "One worker in full: everything workers_list shows plus timeZoneId, maxRunsPerDay, kit provenance (templateId/slug/name), hasInstruction, isProtected, jobSentence, readiness (status ready|blocked with actionable issues — worker_inactive, no_identity, app_not_connected incl. candidateProviders, no_instruction), and 30-day activity (runs by outcome, success rate, cost; null while hosted runs are not enabled for the environment).",
+    "One worker in full: everything workers_list shows plus timeZoneId, maxRunsPerDay, kit provenance (templateId/slug/name), hasInstruction, isProtected, jobSentence, readiness (status ready|blocked with actionable issues — worker_inactive, no_identity, app_not_connected incl. candidateProviders, no_instruction), apps[] (every app the worker has enabled with connection connected|needs_connection|unknown and the providers serving it — the per-worker view of apps_list; an app at needs_connection is fixed with app_connect on the worker's operator or on the dashboard), and 30-day activity (runs by outcome, success rate, cost; null while hosted runs are not enabled for the environment).",
   auth: "manager",
   method: "get",
   schema: {
@@ -1123,6 +1123,576 @@ const setFleetBudget: ToolDescriptor = {
   annotations: UPDATE,
 };
 
+// ─── Permissions (read-only) ────────────────────────────────────────────────
+
+const getWorkerPermissions: ToolDescriptor = {
+  name: "worker_permissions_get",
+  title: "Get Worker Permissions",
+  description:
+    "What the worker may touch, in the kit-authoring vocabulary: apps[] ({code, operations, visibleFields, allowAll, writeEnabled, providers, …} — the same shape a kit's content.apps takes), categorySlots[], contactAllowAll, blockedSenderCategories, timeframePastDays / timeframeFutureDays, maxChildTokens, and ruleCounts (per rule table, PRESENCE only — rule values never leave the worker). Read-only: permissions are never written through this surface; they change through a kit (kit_publish private, then kit_install) or in the dashboard. ruleCounts decides between the two ways to multiply a worker: worker_clone carries the rules, kit_publish from sourceWorkerId never does — so a worker with rules would install MORE permissively as a kit than it runs today. Requires the readWorkers scope.",
+  auth: "manager",
+  method: "get",
+  schema: {
+    tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
+  },
+  path: (params) => `${API}/${params.tokenId}/permissions`,
+  paramFilter: () => ({}),
+  annotations: READ_ONLY,
+};
+
+// ─── Kits (authoring) ───────────────────────────────────────────────────────
+//
+// The publishKits lane. A PRIVATE kit installed with kit_install is how a worker
+// is created from scratch on this surface (cloning is the only other non-kit
+// path), so these descriptors teach the flow as much as the wire: read the guide
+// and the vocabulary on the Directory server, validate, publish private, install.
+
+const KIT_REF = z.string().min(1).max(120);
+const KIT_REF_HINT =
+  "The kit's slug, as returned by my_kits_list / kit_publish (its legacy numeric id is also accepted). Resolution is account-scoped: 404 not_found means no such kit on THIS account — another account's kit is indistinguishable from a nonexistent one.";
+
+const AUTHORING_FLOW_NOTE =
+  " Authoring flow: read kit_authoring_guide (index, then schema and rules) and kit_vocabulary on the public WorkerKit Directory server first; kit_validate the exact body you will publish; publish PRIVATE (visibility 'private') and kit_install it; promote with kit_replace (visibility 'public') once a run has proved it. Requires the publishKits scope." +
+  NEW_SCOPE_NOTE;
+
+const kitRefParam = KIT_REF.describe(KIT_REF_HINT);
+const kitRefPath = (params: Record<string, unknown>, suffix = "") =>
+  `${KITS_API}/${encodeURIComponent(String(params.kitRef))}${suffix}`;
+const withoutKitRef = (params: Record<string, unknown>) => {
+  const { kitRef: _kitRef, ...body } = params;
+  return body;
+};
+
+const LISTING_SCHEMA = {
+  name: z.string().min(1).max(120).describe(
+    "Kit name, 1-120 chars — becomes the slug (kebab-cased), immutable once public. Put the searchable noun here."
+  ),
+  jobSentence: z.string().min(1).max(200).describe(
+    "One-line outcome, 1-200 chars. With name, the ONLY free-text-searched field."
+  ),
+  description: z.string().max(20000).optional().describe(
+    "Markdown listing description (≤20000; write it under 500: one line, then 3-5 bullets). Not searched."
+  ),
+  categorySlugs: z.array(z.string()).min(1).max(8).describe(
+    "1-8 browse-category slugs from kit_vocabulary's categories (jobFamilies / roles / industries). An unknown slug fails the publish."
+  ),
+  visibility: z.enum(["public", "private"]).optional().describe(
+    "'private' (recommended first) = installable only by this account, no supply-chain scan; 'public' (default) = listed in the directory after the fail-closed scan."
+  ),
+  isProtected: z.boolean().optional().describe(
+    "true = installers get a working worker and the permission manifest but never the instruction text. Independent of visibility."
+  ),
+  publisherName: z.string().min(3).max(80).optional().describe(
+    "Required on this account's FIRST publish only (creates the publisher profile; globally unique, 409 if taken). Ignored afterwards — rename with publisher_set."
+  ),
+  appDescriptions: z.array(z.record(z.unknown())).optional().describe(
+    "Per PINNED app: {code, description ≤600, tools:[{key, description ≤300}]} — every key must be an operation the kit grants; describing a slot member is a rejection. Shape: kit_authoring_guide section 'schema'."
+  ),
+  recommendedClients: z.array(z.string().max(40)).max(10).optional().describe(
+    "≤10 client names, ≤40 chars each, e.g. claude, chatgpt, cursor."
+  ),
+  recommendedModel: z.string().max(80).optional().describe("Display-only recommended model name (≤80)."),
+  declaredModelFloor: z.string().max(80).optional().describe("Display-only minimum model (≤80)."),
+  modelScores: z.array(z.record(z.unknown())).max(10).optional().describe(
+    "≤10 of {model, score 0-100, notes ≤300} — only for models the kit was actually run on."
+  ),
+};
+
+const CONTENT_SCHEMA = z.record(z.unknown()).describe(
+  "The kit's content: instructionContent (required), whenToUse, startCommand, endCommand, endCommandDescription, skillResources, appCodes XOR apps, categorySlots, mcpServers, contactAllowAll, blockedSenderCategories, timeframePastDays, timeframeFutureDays, maxChildTokens, memoryProfile, selfFactsEnabled, memorySetup, schedules, triggers, usageWindows. The exact shape, every cap and every rule: kit_authoring_guide section 'schema'; app codes, tool keys and category slugs: kit_vocabulary. Validated strictly server-side — unknown keys are rejected, never ignored — so kit_validate first."
+);
+
+const getMyPublisher: ToolDescriptor = {
+  name: "publisher_get_mine",
+  title: "Get My Publisher",
+  description:
+    "This account's publisher profile — the name every listing publishes under, its slug, description, links, isListed and kitCount. 404 not_found until the account's first publish creates it: then that first kit_publish must carry publisherName (3-80 chars, globally unique; 409 conflict = taken). Afterwards the name is fixed per account (rename with publisher_set) and publisherName on a publish is ignored. Requires the readWorkers scope.",
+  auth: "manager",
+  method: "get",
+  schema: {},
+  path: `${KITS_API}/publisher`,
+  annotations: READ_ONLY,
+};
+
+const setMyPublisher: ToolDescriptor = {
+  name: "publisher_set",
+  title: "Update My Publisher",
+  description:
+    "Edit the publisher profile: name (renames every listing; the slug never moves), description (the bio), links ([{kind, value}]), isListed (whether the profile appears in the directory). Every field optional — omit to keep. 404 until the first publish creates the profile. 409 conflict when the new name is already another publisher's — pick a different name; retrying the same one will not help. Requires the publishKits scope." +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "put",
+  schema: {
+    name: z.string().min(3).max(80).optional().describe("New publisher name (3-80, globally unique)."),
+    description: z.string().max(2000).optional().describe("Bio shown on the publisher page."),
+    links: z.array(z.object({
+      kind: z.string().describe("Link kind, e.g. website, x, github, linkedin."),
+      value: z.string().describe("The handle or URL for that kind."),
+    })).optional().describe("Full replace of the link list."),
+    isListed: z.boolean().optional().describe("false hides the profile page from the directory; kits stay installable."),
+  },
+  path: `${KITS_API}/publisher`,
+  bodyBuilder: (params) => ({
+    name: params.name,
+    description: params.description,
+    links: params.links,
+    isListed: params.isListed,
+  }),
+  annotations: UPDATE,
+};
+
+const listMyKits: ToolDescriptor = {
+  name: "my_kits_list",
+  title: "List My Kits",
+  description:
+    "This account's kits, ANY status: slug, name, jobSentence, status (published | unlisted | private | removedByAdmin), moderationStatus (clear | flagged | underReview | takenDown — the truth about a public listing; the semantic scan can flag it MINUTES after the publish response, so re-read this after a public publish and read kit_scan_get for the findings), isProtected, apps, categories, categorySlots, requiredInputs, memorySetup, downloadCount, installedWorkerCount / workersBehind (this account's workers installed from each kit) and the dates. Requires the readWorkers scope.",
+  auth: "manager",
+  method: "get",
+  schema: {},
+  path: `${KITS_API}/mine`,
+  annotations: READ_ONLY,
+};
+
+const validateKit: ToolDescriptor = {
+  name: "kit_validate",
+  title: "Validate Kit",
+  description:
+    "Dry-run a publish: the SAME body kit_publish takes, judged by every publish gate at once — creates nothing. Returns canPublish (the verdict), errors[] and warnings[] each {section, message} (sections: metadata, categories, permissions, mcp, labels, scanner, scanner-llm, memory, appDescriptions, publisher, limits — the publish itself stops at the FIRST problem, this reports them all), lintWarnings[] (advisory structure nudges), requiredInputs[] (install-form fields the text declares), appLabels[], memorySetup[] (normalized) and manifestPreview (the exact permission manifest that would publish). The document is judged as a PUBLIC publish (visibility is a publish-time choice, not validated), so a private publish is strictly more permissive than its dry run. Only authored content can be dry-run: sourceWorkerId has nothing to validate (400). Pass kitRef when the body will REPLACE an existing listing (kit_replace), so the 50-kit cap and the republish rules are judged against that listing. Repeat until canPublish is true, then kit_publish the identical body." +
+    AUTHORING_FLOW_NOTE,
+  auth: "manager",
+  method: "post",
+  schema: {
+    ...LISTING_SCHEMA,
+    name: LISTING_SCHEMA.name.optional(),
+    jobSentence: LISTING_SCHEMA.jobSentence.optional(),
+    categorySlugs: LISTING_SCHEMA.categorySlugs.optional(),
+    content: CONTENT_SCHEMA,
+    kitRef: KIT_REF.optional().describe(
+      "Validate as a REPLACEMENT of this owned listing (slug) — pass what you will pass to kit_replace. Omit for a new listing."
+    ),
+  },
+  path: (params) =>
+    params.kitRef ? `${KITS_API}/validate?kitRef=${encodeURIComponent(String(params.kitRef))}` : `${KITS_API}/validate`,
+  bodyBuilder: withoutKitRef,
+  annotations: READ_ONLY,
+};
+
+const publishKit: ToolDescriptor = {
+  name: "kit_publish",
+  title: "Publish Kit",
+  description:
+    "Publish a NEW kit on this account — from authored content, or from any worker on the account (sourceWorkerId: its instruction, texts, permissions, schedules and triggers become the kit; rule VALUES never travel, only that rules exist). Exactly one of content / sourceWorkerId. NOT idempotent: every successful call creates another listing — never retry a success; on a timeout read my_kits_list before trying again. visibility 'private' (recommended first) makes a kit only this account can install: kit_install its slug and you have a worker built from scratch through the reviewed manifest pipeline. 'public' (default) lists it in the directory after the fail-closed supply-chain scan — 503 kit_scan_unavailable means retry later with the SAME body, or publish private. 400 names the FIRST failing rule (run kit_validate first to see them all). 403 = the source worker was installed from a protected kit, whose text belongs to that kit's publisher. 409 = publisherName taken (first publish only). Caps: 20 publishes/hour per account, 50 published kits per account. Returns the listing (slug, status, moderationStatus, requiredInputs, lintWarnings, …); a public listing can still be flagged minutes later by the semantic scan — re-read my_kits_list, and kit_scan_get has the findings." +
+    AUTHORING_FLOW_NOTE,
+  auth: "manager",
+  method: "post",
+  schema: {
+    ...LISTING_SCHEMA,
+    content: CONTENT_SCHEMA.optional(),
+    sourceWorkerId: z.string().uuid().optional().describe(
+      "Publish from this worker instead of content (any worker on the account — its workerId from workers_list). Never together with content."
+    ),
+  },
+  path: KITS_API,
+  annotations: CREATE,
+};
+
+const updateKit: ToolDescriptor = {
+  name: "kit_update",
+  title: "Update Kit",
+  description:
+    "Edit a listing in place — PARTIAL: omitted fields stay unchanged, and the slug never moves. Metadata (name, jobSentence, description, categorySlugs, appDescriptions, recommendedClients, recommendedModel, declaredModelFloor, modelScores, isProtected), the served text (instructionContent, whenToUse, startCommand, endCommand, endCommandDescription, skillResources — full replace), memory (memoryProfile, selfFactsEnabled, memorySetup — full replace), and the surface: permissions + categorySlots replace TOGETHER as one unit (providing either rebuilds the whole surface; the other defaults to empty), contactAllowAll separately. Labels are validated against the FINAL text and manifest. A text change on a non-private kit re-runs the supply-chain scan (503 = retry later, nothing changed). For a whole-kit replacement that also swaps schedules, triggers and usage windows use kit_replace. Requires the publishKits scope." +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "patch",
+  schema: {
+    kitRef: kitRefParam,
+    name: LISTING_SCHEMA.name.optional(),
+    jobSentence: LISTING_SCHEMA.jobSentence.optional(),
+    description: LISTING_SCHEMA.description,
+    categorySlugs: LISTING_SCHEMA.categorySlugs.optional(),
+    appDescriptions: LISTING_SCHEMA.appDescriptions,
+    recommendedClients: LISTING_SCHEMA.recommendedClients,
+    recommendedModel: LISTING_SCHEMA.recommendedModel,
+    declaredModelFloor: LISTING_SCHEMA.declaredModelFloor,
+    modelScores: LISTING_SCHEMA.modelScores,
+    isProtected: LISTING_SCHEMA.isProtected,
+    instructionContent: z.string().min(1).max(100000).optional().describe("Replace the served instruction (1-100000)."),
+    whenToUse: z.string().max(500).optional().describe("Replace the when-to-use line (≤500; '' clears)."),
+    startCommand: z.string().max(20000).optional().describe("Replace the /start command (≤20000; '' clears)."),
+    endCommand: z.string().max(20000).optional().describe("Replace the /end command (≤20000; '' clears)."),
+    endCommandDescription: z.string().max(500).optional().describe("Replace when the worker should call /end (≤500; '' clears)."),
+    skillResources: z.array(z.record(z.unknown())).max(20).optional().describe(
+      "Full replace of the skill resources ([] clears). Shape: kit_authoring_guide section 'schema'. Counts as a text edit."
+    ),
+    permissions: z.array(z.record(z.unknown())).optional().describe(
+      "Full replace of the pinned-app permission selections (content.apps shape). Replaces TOGETHER with categorySlots."
+    ),
+    categorySlots: z.array(z.record(z.unknown())).optional().describe(
+      "Full replace of the capability slots (content.categorySlots shape). Replaces TOGETHER with permissions; [] clears."
+    ),
+    contactAllowAll: z.boolean().optional().describe(
+      "The token-wide contact/board stance: true allow-all, false deny-by-default."
+    ),
+    memoryProfile: z.enum(["stateless", "contextual"]).optional().describe("The declared worker class."),
+    selfFactsEnabled: z.boolean().optional().describe("Whether the instruction expects the worker to save its own facts."),
+    memorySetup: z.array(z.record(z.unknown())).max(10).optional().describe(
+      "Full replace of the memory-setup questions ([] asks nothing). Shape: kit_authoring_guide section 'schema'."
+    ),
+  },
+  path: (params) => kitRefPath(params),
+  bodyBuilder: withoutKitRef,
+  annotations: UPDATE,
+};
+
+const replaceKit: ToolDescriptor = {
+  name: "kit_replace",
+  title: "Replace Kit",
+  description:
+    "Replace a listing WHOLESALE from authored content — the same body as kit_publish with content (required; sourceWorkerId is not allowed here). Unlike kit_update this also replaces schedules, triggers, usage windows and trigger modes. visibility chooses the resulting state and is how a private kit is PROMOTED to public (runs the scan) or a public one demoted. Timeframes, contact policy and mcpServers the content leaves null carry over from the stored manifest — a republish never silently downgrades them. The slug never changes for an already-public kit; a born-private kit takes its clean slug on its first public release. 400 on a listing an admin removed or that is taken down. Validate first: kit_validate with the same body and this kitRef. Requires the publishKits scope." +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "put",
+  schema: {
+    kitRef: kitRefParam,
+    ...LISTING_SCHEMA,
+    content: CONTENT_SCHEMA,
+  },
+  path: (params) => kitRefPath(params),
+  bodyBuilder: withoutKitRef,
+  annotations: UPDATE,
+};
+
+const getKitScan: ToolDescriptor = {
+  name: "kit_scan_get",
+  title: "Get Kit Scan Report",
+  description:
+    "The listing's security-scan report, author-only: moderationStatus (clear | flagged | underReview | takenDown), moderationReason, moderationDecidedAtUtc, scannedAtUtc (null = never scanned), checks[] (the check families that ran), findings[] (what to fix, as SEVERITY:analyzer — Title), flagCodes[] (the machine codes behind a flag) and semanticScanPending (true = the deep pass has not landed yet — poll this after a public publish rather than assuming clear). The public listing never carries finding text. Requires the readWorkers scope.",
+  auth: "manager",
+  method: "get",
+  schema: { kitRef: kitRefParam },
+  path: (params) => kitRefPath(params, "/scan"),
+  paramFilter: () => ({}),
+  annotations: READ_ONLY,
+};
+
+const unpublishKit: ToolDescriptor = {
+  name: "kit_unpublish",
+  title: "Unpublish Kit",
+  description:
+    "Withdraw a listing from the directory (status unlisted). Reversible with kit_relist — the non-destructive alternative to kit_delete. Workers already installed from it keep working: a kit is copied at install, never linked. Requires the publishKits scope." +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "post",
+  schema: { kitRef: kitRefParam },
+  path: (params) => kitRefPath(params, "/unpublish"),
+  bodyBuilder: () => ({}),
+  annotations: UPDATE,
+};
+
+const relistKit: ToolDescriptor = {
+  name: "kit_relist",
+  title: "Relist Kit",
+  description:
+    "Restore an UNLISTED kit to the public directory. Re-runs the fail-closed supply-chain scan (503 kit_scan_unavailable = retry later; nothing changed). Only for an unlisted kit — a PRIVATE kit goes public through kit_replace with visibility 'public'. Requires the publishKits scope." +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "post",
+  schema: { kitRef: kitRefParam },
+  path: (params) => kitRefPath(params, "/relist"),
+  bodyBuilder: () => ({}),
+  annotations: UPDATE,
+};
+
+const makeKitPrivate: ToolDescriptor = {
+  name: "kit_make_private",
+  title: "Make Kit Private",
+  description:
+    "Move a listing into this account's private library: still installable by this account (kit_install), hidden from the directory. Works from any status except removedByAdmin. Making it public again is kit_replace with visibility 'public', which re-runs the scan. Requires the publishKits scope." +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "post",
+  schema: { kitRef: kitRefParam },
+  path: (params) => kitRefPath(params, "/make-private"),
+  bodyBuilder: () => ({}),
+  annotations: UPDATE,
+};
+
+const deleteKit: ToolDescriptor = {
+  name: "kit_delete",
+  title: "Delete Kit",
+  description:
+    "Hard-delete a listing (204). PERMANENT — destroys its download history and stats; kit_unpublish is the reversible alternative. Workers installed from it are untouched. The second call is a 404. Requires the publishKits scope." +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "delete",
+  schema: { kitRef: kitRefParam },
+  path: (params) => kitRefPath(params),
+  successMessage: "Kit deleted.",
+  annotations: DELETE,
+};
+
+// ─── Connected apps + model keys (manageConnections) ────────────────────────
+// The operational half of authoring: a worker can only use apps that are
+// connected on its operator. The read is in the kit vocabulary (the same app
+// codes content.apps[].code takes) so a kit's apps can be checked against it
+// verbatim; the write takes a credential, validated live and never returned.
+
+const APPS_API = "/api/manage/apps";
+const MODEL_KEYS_API = "/api/manage/model-keys";
+
+const OPERATOR_ID_HINT =
+  "The operator (workspace) to act for, as a GUID from apps_list → operators[]. Omit for the account's default operator — the one installs and clones land on. Account-level providers ignore it.";
+
+const PROVIDER_HINT =
+  "A recipe's provider code from apps_list → apps[].connect[].provider: telegram, discord, slack, twilio, sendgrid, resend, tavily, brave, exa, brightData, firecrawl, granola, krisp, gong, zendesk, shopify, hubspot, notion, linear, monday, jira, asana, confluence, or mcp:<slug> for an MCP app (a platform one, or one of your own from mcp_servers_list — published or not). Case-insensitive.";
+
+const listApps: ToolDescriptor = {
+  name: "apps_list",
+  title: "List Connected Apps",
+  description:
+    "Which apps this operator can use RIGHT NOW, how each unconnected one gets connected, and every connection behind the grid — read it before installing or publishing a kit, and whenever a worker's readiness says app_not_connected. The customMcp entry lists the PUBLISHED MCP apps (platform ones and this account's own); an app the platform does not offer at all is added with mcp_server_create. apps[] has one entry per kit app code (the same codes a kit's content.apps[].code takes): connected (an ACTIVE connection exists, or the platform serves the app under its own key), providers (the provider codes behind it), and connect[] — one recipe per provider with auth (credential = POST its fields with app_connect | oauth = a human signs in at url | platform = nothing to connect | admin = an account admin connected it for everyone), scope (operator | account — account-level keys serve every operator), fields[] ({name, required, secret, hint} — what app_connect's credential takes), url (the dashboard page for OAuth consents: Google, Microsoft, GitHub, Reddit and OAuth gateways cannot be connected from a key), help (where the secret comes from), and for MCP apps connected (per gateway). connections[] lists every connection as ONE uniform row: provider + id (what app_disconnect takes as connectionId), apps served (a Google sign-in serves email, calendar and drive at once), name, operatorId (null = account-level), status (ACTIVE | REQUIRES_REAUTH | EXPIRED | …), requiresReauth (the credential exists but the provider stopped honouring it — reconnect), deletable (false = removed on the dashboard, not here). operators[] lists the account's active operators (isDefault = the one used when none is named); operatorId re-reads for another. warnings names families whose read failed (rows MISSING, not absent — retry before concluding). No secret is ever returned. Requires the readWorkers scope.",
+  auth: "manager",
+  method: "get",
+  schema: {
+    operatorId: z.string().uuid().optional().describe(OPERATOR_ID_HINT),
+  },
+  path: APPS_API,
+  annotations: READ_ONLY,
+};
+
+const connectApp: ToolDescriptor = {
+  name: "app_connect",
+  title: "Connect App",
+  description:
+    "Connect an app for this operator by credential — the same validated, encrypted paste-to-connect the dashboard's tiles do: the credential is checked LIVE against the provider before anything is stored, stored encrypted, and never returned by any read. Take provider and the credential's field names from apps_list → apps[].connect[] (auth 'credential' only); connecting a provider again replaces its stored credential. Returns 201 {app, provider, connection (the same row apps_list shows — its id is what app_disconnect takes), warnings (non-fatal findings from the live check, typically permission scopes the credential lacks)}. On your own MCP server with credentialScope account this sets the one shared credential. An app the platform does not offer at all is added first with mcp_server_create (which can carry the credential itself). Errors: 400 credential_invalid = the provider rejected it — the message says what to check, do not retry the same value; 502 provider_unavailable = could not verify, retry the SAME request later; 400 dashboard_only = an OAuth provider — hand a human the url in the message; 400 nothing_to_connect = a platform-served app; 400 managed_by_admin = an org-wide PLATFORM MCP app; 404 = an unknown mcp:<slug>; 422 unsupported_provider = not available in this environment. Rate limit: 30 connects/hour per account. Requires the manageConnections scope." +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "post",
+  schema: {
+    provider: z.string().min(1).max(120).describe(PROVIDER_HINT),
+    credential: z.record(z.unknown()).describe(
+      "The recipe's fields by name, e.g. {\"botToken\": \"…\"} for telegram, {\"apiKey\": \"…\"} for tavily, {\"email\": …, \"apiToken\": …, \"instanceUrl\": …} for jira, {\"token\": \"…\"} for a Bearer MCP app. An MCP app with auth None takes {}."
+    ),
+    operatorId: z.string().uuid().optional().describe(OPERATOR_ID_HINT),
+    label: z.string().max(200).optional().describe("Optional operator-facing label, where the family keeps one (messaging, web search, keys)."),
+  },
+  path: (params) => `${APPS_API}/${encodeURIComponent(String(params.provider))}/connect`,
+  bodyBuilder: (params) => ({ operatorId: params.operatorId, label: params.label, credential: params.credential }),
+  annotations: CREATE,
+};
+
+const disconnectApp: ToolDescriptor = {
+  name: "app_disconnect",
+  title: "Disconnect App",
+  description:
+    "Remove one connection (204). Workers using the app lose it immediately and their readiness reports app_not_connected — say so before doing it. provider and connectionId are a row's provider and id from apps_list → connections[]; only rows with deletable:true can be removed here (400 dashboard_only for an OAuth consent, 400 managed_by_admin for an admin-managed gateway — both are removed on the dashboard). 404 = no such connection on this operator or account. Requires the manageConnections scope." +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "delete",
+  schema: {
+    provider: z.string().min(1).max(120).describe(PROVIDER_HINT),
+    connectionId: z.string().min(1).max(200).describe("The row's id from apps_list → connections[] (a bot id, workspace id, row id or provider code — opaque; copy it verbatim)."),
+    operatorId: z.string().uuid().optional().describe(OPERATOR_ID_HINT),
+  },
+  // DELETE sends no body, so the optional operator rides the query string (the same promotion
+  // kit_validate uses for kitRef).
+  path: (params) =>
+    `${APPS_API}/${encodeURIComponent(String(params.provider))}/connections/${encodeURIComponent(String(params.connectionId))}` +
+    (typeof params.operatorId === "string" && params.operatorId ? `?operatorId=${encodeURIComponent(params.operatorId)}` : ""),
+  successMessage: "Connection removed.",
+  annotations: DELETE,
+};
+
+const MODEL_PROVIDER_HINT = "The model provider: Anthropic | OpenAI | Google | XAI (case-insensitive).";
+
+const listModelKeys: ToolDescriptor = {
+  name: "model_keys_list",
+  title: "List Model Keys",
+  description:
+    "The account's own model-provider API keys (bring-your-own-key): keys[] with provider, label, keySuffix + fingerprint (recognition only — the key itself is never returned), status ACTIVE | INVALID | REVOKED, lastErrorCode (why the provider rejected an INVALID key), and the timestamps. A key applies to every run on its provider automatically; an INVALID one means runs on that provider are being SKIPPED (skipReason ByokKeyInvalid) until it is replaced with model_key_set or removed with model_key_delete. includeRevoked lists removed keys too. 422 RUNTIME_NOT_ENABLED where hosted runs are off. Requires the readWorkers scope.",
+  auth: "manager",
+  method: "get",
+  schema: {
+    includeRevoked: z.boolean().default(false).describe("true = include keys that were removed."),
+  },
+  path: MODEL_KEYS_API,
+  annotations: READ_ONLY,
+};
+
+const setModelKey: ToolDescriptor = {
+  name: "model_key_set",
+  title: "Set Model Key",
+  description:
+    "Set or rotate the account's API key for a model provider. The key is probed live against the provider BEFORE it is stored — an unauthenticated key is never stored — then stored encrypted and never returned; re-pasting the current key is a quiet no-op. From the next run, runs on that provider bill the account's own key (1M free tokens a month, then a small fee on list price from the wallet — no platform fallback: if the provider later rejects the key, runs on it are skipped until it is replaced or removed). Errors: 400 provider_auth_failed = the provider rejected it, do not retry the same value; 400 key_malformed = a paste artifact (control or non-ASCII characters), re-copy it; 502 provider_unavailable = could not verify, retry the SAME request later; 503 vault_unconfigured = key storage is not available on this environment; 422 RUNTIME_NOT_ENABLED. Rate limit: 20 sets/hour per account. Requires the manageConnections scope." +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "put",
+  schema: {
+    provider: z.string().min(1).max(40).describe(MODEL_PROVIDER_HINT),
+    apiKey: z.string().min(8).max(4096).describe("The provider API key, verbatim."),
+    label: z.string().max(200).optional().describe("Optional label shown beside the key."),
+  },
+  path: (params) => `${MODEL_KEYS_API}/${encodeURIComponent(String(params.provider))}`,
+  bodyBuilder: (params) => ({ apiKey: params.apiKey, label: params.label }),
+  annotations: UPDATE,
+};
+
+const deleteModelKey: ToolDescriptor = {
+  name: "model_key_delete",
+  title: "Delete Model Key",
+  description:
+    "Remove the account's key for a model provider (204). Runs on its models return to platform billing from the next run; this also clears an INVALID key, which is how skipped runs on that provider resume. 404 not_found when no key is stored for the provider; 422 RUNTIME_NOT_ENABLED. Requires the manageConnections scope." +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "delete",
+  schema: {
+    provider: z.string().min(1).max(40).describe(MODEL_PROVIDER_HINT),
+  },
+  path: (params) => `${MODEL_KEYS_API}/${encodeURIComponent(String(params.provider))}`,
+  successMessage: "Model key removed.",
+  annotations: DELETE,
+};
+
+// ─── Custom MCP servers — the account's own MCP apps ────────────────────────
+//
+// How an app the platform does not offer reaches a worker: register its MCP
+// server (the credential rides the same call), discover its tools, enable the
+// ones a job needs — which publishes it — and bind it in a kit's
+// content.mcpServers by id. The same steps the Kit Creator Studio runs; here a
+// machine runs them with the secret in hand.
+
+const MCP_SERVERS_API = "/api/manage/mcp-servers";
+
+const GATEWAY_ID_HINT =
+  "The server's gatewayId handle (a GUID) from mcp_servers_list or the register's response — NOT the numeric id a kit binds.";
+
+const MCP_AUTH_TYPES = ["None", "Bearer", "ApiKeyHeader", "ApiKeyQuery", "Basic", "CustomHeaders", "McpOAuth"] as const;
+
+const listMcpServers: ToolDescriptor = {
+  name: "mcp_servers_list",
+  title: "List MCP Servers",
+  description:
+    "Every MCP server this account registered as its own custom MCP app — published or not — with tools, credential state and connect recipe; no secret is ever returned. servers[] by name: id (the value a kit binds as content.mcpServers[].gatewayId), gatewayId (the handle the other mcp_server_* tools take), slug (a published one appears in apps_list as mcp:<slug>), upstreamUrl (public listing data if a kit binding it publishes publicly), authType, credentialScope (operator = each operator connects its own credential | account = one credential for everyone), published (true once at least one tool is enabled — only then can workers reach it and kits bind it), status (the server's health), connected / sharedConnected / connectedOperatorIds, lastDiscoveredAt, lastDiscoveryError, connect (the recipe app_connect takes — provider, fields), tools[] (every discovered tool: toolId — what mcp_server_set_tools and content.mcpServers[].toolIds take — name, description, enabled, state). max is the per-account ceiling. Platform MCP apps are not here: they need no registration and are on kit_vocabulary (mcpApps). Requires the readWorkers scope.",
+  auth: "manager",
+  method: "get",
+  schema: {},
+  path: MCP_SERVERS_API,
+  annotations: READ_ONLY,
+};
+
+const getMcpServer: ToolDescriptor = {
+  name: "mcp_server_get",
+  title: "Get MCP Server",
+  description:
+    "One of this account's MCP servers, with every discovered tool (the same shape as a mcp_servers_list entry). 404 not_found = no such server on this account. Requires the readWorkers scope.",
+  auth: "manager",
+  method: "get",
+  schema: {
+    gatewayId: z.string().uuid().describe(GATEWAY_ID_HINT),
+  },
+  path: (params) => `${MCP_SERVERS_API}/${encodeURIComponent(String(params.gatewayId))}`,
+  paramFilter: () => ({}),
+  annotations: READ_ONLY,
+};
+
+const createMcpServer: ToolDescriptor = {
+  name: "mcp_server_create",
+  title: "Register MCP Server",
+  description:
+    "Register an MCP server as this account's own custom MCP app — the way to reach an app the platform does not offer — and list its tools in the same call. upstreamUrl must be the MCP endpoint itself (https), never a docs page, and must come from the user or the vendor's docs — never guessed. authType is what the server expects: None (default — discovered in this call, no credential), Bearer {token}, ApiKeyHeader {header, value}, ApiKeyQuery {param, value}, Basic {username, password}, CustomHeaders {headers} or McpOAuth (a human completes the sign-in on the dashboard). credential carries those fields: probed LIVE against the server before anything is stored, stored encrypted, never returned, and the tools are discovered with it. credentialScope: operator (default — each operator connects its own; this call stores it for operatorId or the default operator) or account (one credential serves every operator). Omit credential to register now and connect later with app_connect (provider mcp:<slug>). Returns 201 {server (the mcp_servers_list shape — id is what a kit binds, gatewayId what the next tools take), discovery {added, changed, removed, unchanged}, next (what to do now)}. The server is UNPUBLISHED until mcp_server_set_tools enables at least one tool. Errors: 400 credential_invalid = the server rejected the credential (nothing was kept — fix it and retry); 502 provider_unavailable = the URL did not answer as an MCP server (nothing was kept — check the endpoint or retry later); 422 invalid_url = not an https URL on a public host; 400 invalid_request names the valid authType / credentialScope values or the 25-server ceiling. Tell the user: the upstream URL becomes public listing data if a kit binding this server publishes publicly. Rate limit: 20 registers/hour per account. Requires the manageConnections scope." +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "post",
+  schema: {
+    name: z.string().min(1).max(200).describe("Display name, e.g. the product name."),
+    upstreamUrl: z.string().min(8).max(2048).describe("The https MCP endpoint, verbatim from the user or the vendor's docs."),
+    authType: z.enum(MCP_AUTH_TYPES).default("None").describe("What the server expects. Default None."),
+    credentialScope: z.enum(["operator", "account"]).default("operator").describe("operator = each operator connects its own credential (default) | account = one credential for every operator."),
+    credential: z.record(z.unknown()).optional().describe(
+      "The auth type's fields by name, e.g. {\"token\": \"…\"} for Bearer, {\"header\": \"X-Api-Key\", \"value\": \"…\"} for ApiKeyHeader. Omit for None, McpOAuth, or to connect later with app_connect."
+    ),
+    operatorId: z.string().uuid().optional().describe("credentialScope operator: the operator the credential is stored for (a GUID from apps_list → operators[]). Omit for the account's default operator."),
+    description: z.string().max(1000).optional().describe("Catalog blurb shown where the server is picked."),
+    connectionInstructions: z.string().max(4000).optional().describe("Where a person finds the credential, per the vendor's docs (travels with a kit that binds this server)."),
+    credentialHelpText: z.string().max(500).optional().describe("A one-line hint for the credential field, e.g. 'Personal API key'."),
+    setupGuideUrl: z.string().max(2048).optional().describe("The vendor's setup page."),
+    slug: z.string().max(60).optional().describe("Override the slug derived from the name (uppercase, unique within the account)."),
+    namespacePrefix: z.string().max(20).optional().describe("Override the tool-name prefix derived from the slug ([a-z0-9_], ≤20)."),
+    transport: z.enum(["AutoDetect", "StreamableHttp", "Sse"]).optional().describe("Default AutoDetect."),
+    oauthScopes: z.string().max(2048).optional().describe("McpOAuth only: space-delimited scopes to request."),
+    callTimeoutSeconds: z.number().int().min(1).max(600).optional().describe("Per-call timeout; default 60."),
+  },
+  path: MCP_SERVERS_API,
+  bodyBuilder: (params) => ({
+    name: params.name,
+    upstreamUrl: params.upstreamUrl,
+    authType: params.authType,
+    credentialScope: params.credentialScope,
+    credential: params.credential,
+    operatorId: params.operatorId,
+    description: params.description,
+    connectionInstructions: params.connectionInstructions,
+    credentialHelpText: params.credentialHelpText,
+    setupGuideUrl: params.setupGuideUrl,
+    slug: params.slug,
+    namespacePrefix: params.namespacePrefix,
+    transport: params.transport,
+    oAuthScopes: params.oauthScopes,
+    callTimeoutSeconds: params.callTimeoutSeconds,
+  }),
+  annotations: CREATE,
+};
+
+const discoverMcpServer: ToolDescriptor = {
+  name: "mcp_server_discover",
+  title: "Discover MCP Server Tools",
+  description:
+    "List the server's tools again with its STORED credential (the shared one for scope account, operatorId's — the default operator's when omitted — for scope operator; never a pasted one): new tools land withheld, changed ones drop out until re-enabled with mcp_server_set_tools, vanished ones are removed. Returns {server, discovery {added, changed, removed, unchanged}, next}. 422 not_connected = nobody has connected this server yet — the message names the fix (app_connect with provider mcp:<slug>, or the dashboard for McpOAuth); 502 provider_unavailable = the server did not list its tools — retry later, or reconnect if the credential was revoked. Rate limit: 60 discoveries/hour per account. Requires the manageConnections scope." +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "post",
+  schema: {
+    gatewayId: z.string().uuid().describe(GATEWAY_ID_HINT),
+    operatorId: z.string().uuid().optional().describe("Scope operator: whose stored credential to list with. Omit for the account's default operator."),
+  },
+  path: (params) => `${MCP_SERVERS_API}/${encodeURIComponent(String(params.gatewayId))}/discover`,
+  bodyBuilder: (params) => ({ operatorId: params.operatorId }),
+  annotations: UPDATE,
+};
+
+const setMcpServerTools: ToolDescriptor = {
+  name: "mcp_server_set_tools",
+  title: "Set MCP Server Tools",
+  description:
+    "Set the COMPLETE set of enabled tools on one of this account's MCP servers. Enabling at least one PUBLISHES the server: it appears in apps_list as mcp:<slug>, workers on operators where it is connected can call the enabled tools, and a kit binds them with content.mcpServers[{gatewayId: server.id, toolIds}]. Enabling none unpublishes it. Enable only what the job needs — every other tool reverts to withheld (blocked ones are untouched). enabledToolIds are toolId values from tools[]; 400 invalid_request names a toolId that is not on this server. Returns {server, next}. Requires the manageConnections scope." +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "put",
+  schema: {
+    gatewayId: z.string().uuid().describe(GATEWAY_ID_HINT),
+    enabledToolIds: z.array(z.number().int().nonnegative()).max(500).describe("The complete set of toolId values to enable (from tools[]); [] unpublishes the server."),
+  },
+  path: (params) => `${MCP_SERVERS_API}/${encodeURIComponent(String(params.gatewayId))}/tools`,
+  bodyBuilder: (params) => ({ enabledToolIds: params.enabledToolIds }),
+  annotations: UPDATE,
+};
+
+const deleteMcpServer: ToolDescriptor = {
+  name: "mcp_server_delete",
+  title: "Delete MCP Server",
+  description:
+    "Delete one of this account's MCP servers (204): its tools, every stored credential and every worker binding go with it, so workers granted its tools lose them immediately and a kit that binds it can no longer be republished from its draft — say so before doing it. 404 not_found = no such server on this account; 403 forbidden = the key's owner neither registered it nor is an account admin. Requires the manageConnections scope." +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "delete",
+  schema: {
+    gatewayId: z.string().uuid().describe(GATEWAY_ID_HINT),
+  },
+  path: (params) => `${MCP_SERVERS_API}/${encodeURIComponent(String(params.gatewayId))}`,
+  successMessage: "MCP server deleted.",
+  annotations: DELETE,
+};
+
 // ─── Export ─────────────────────────────────────────────────────────────────
 
 export const manageDescriptors: readonly ToolDescriptor[] = [
@@ -1169,4 +1739,29 @@ export const manageDescriptors: readonly ToolDescriptor[] = [
   setWorkerBudget,
   getFleetBudget,
   setFleetBudget,
+  getWorkerPermissions,
+  getMyPublisher,
+  setMyPublisher,
+  listMyKits,
+  validateKit,
+  publishKit,
+  updateKit,
+  replaceKit,
+  getKitScan,
+  unpublishKit,
+  relistKit,
+  makeKitPrivate,
+  deleteKit,
+  listApps,
+  connectApp,
+  disconnectApp,
+  listModelKeys,
+  setModelKey,
+  deleteModelKey,
+  listMcpServers,
+  getMcpServer,
+  createMcpServer,
+  discoverMcpServer,
+  setMcpServerTools,
+  deleteMcpServer,
 ];

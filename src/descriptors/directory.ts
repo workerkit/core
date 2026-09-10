@@ -1,6 +1,9 @@
 // The public kits-directory tools: anonymous, read-only catalog tools over the
-// public directory API. Five tools, not nine REST mirrors — one vocabulary
-// call, one search, one dossier, one stats read, one publisher profile.
+// public directory API. Nine tools rather than one per REST endpoint — the about read
+// (what WorkerKit is and when an agent should reach for it), one vocabulary
+// call, one search, one dossier, one stats read, one publisher profile, and the
+// three authoring reads (the guide, the permission vocabulary an author needs,
+// and the explorer of what each app lets a worker do).
 //
 // The upstream surface is already agent-shaped (always-anonymous, no
 // viewer-scoped fields, opt-in skill-resource bodies, composed overview), so
@@ -26,14 +29,20 @@ const SLUG_HINT = "The kit's URL slug, as returned by kits_search (slug).";
 // Appended to every tool: the two facts an agent must never get wrong on a
 // public mount — no auth exists, and installing is out of its reach.
 const DIRECTORY_NOTE =
-  " The directory is public: no authentication, no account needed, and results are identical for everyone. No tool here can install. A kit is installed by a signed-in human on its workerkit.ai page (offer the page URL), or by an authenticated agent via the kit_install_preview / kit_install tools on the WorkerKit Manager MCP server (the /workers mount — manager key with the installKits scope).";
+  " The directory is public: no authentication, no account needed, and results are identical for everyone. No tool here can install or publish. A kit is installed by a signed-in human on its workerkit.ai page (offer the page URL), or by an authenticated agent via the kit_install_preview / kit_install tools on the WorkerKit Manager MCP server (the /workers mount — manager key with the installKits scope); a kit is AUTHORED with kit_authoring_guide + kit_vocabulary here, then validated and published on that same /workers mount (kit_validate / kit_publish, publishKits scope).";
+
+// The two authoring reads share one framing: they are what an agent reads BEFORE
+// writing a kit for the manager surface, and they are anonymous so it can draft
+// before it holds any credential.
+const AUTHORING_NOTE =
+  " The directory is public: no authentication, no account needed, and this read is identical for everyone. The kit itself is validated and published on the authenticated WorkerKit Manager MCP server (the /workers mount): kit_validate (dry run — every section's verdict at once) then kit_publish, both behind the publishKits scope. Publish PRIVATE first (visibility 'private'): a private kit is installable only by its own account — by a signed-in human on its workerkit.ai page, or by an agent via kit_install — which is also how a worker is created from scratch. A worker can only use apps that are CONNECTED on its operator: apps_list on the /workers mount says which are, and app_connect connects the credential-based ones. An app the platform does not offer can still be reached through its MCP server: mcp_server_create on the /workers mount registers it as the account's own custom MCP app (credential included), mcp_server_set_tools enables its tools, and the kit binds it in content.mcpServers.";
 
 // ─── Pure data mappers + footers (presentation data, not ToolResult assembly) ─
 
 type Json = Record<string, unknown>;
 
 const SEARCH_EMPTY_HINT =
-  "No kits matched. Filters AND together — drop some. query is a plain case-insensitive substring over name + job sentence (one short word beats a phrase), and unknown category/app/publisher values match nothing rather than erroring. directory_overview lists every valid filter value.";
+  "No kits matched. Filters AND together — drop some. query is a plain case-insensitive substring over name + job sentence (one short word beats a phrase), and unknown category/app/publisher values match nothing rather than erroring. directory_overview lists every valid filter value. If nothing fits after broadening, author a kit for the exact job rather than installing a near miss: kit_authoring_guide (index, then schema and rules) and kit_app_tools here, then kit_validate and kit_publish (private) on the /workers mount, then kit_install.";
 
 // publisher_get accepts no search filters, so the search hint above would tell an
 // agent to broaden filters it never set. Reachable: the profile 404s only when the
@@ -257,12 +266,97 @@ const getPublisher: ToolDescriptor = {
   footer: (data) => publisherPageFooter(data),
 };
 
+// ─── Authoring reads ────────────────────────────────────────────────────────
+
+const GUIDE_SECTIONS = ["index", "schema", "rules", "skill", "slots", "instruction", "example", "selfcheck"] as const;
+
+const kitAuthoringGuide: ToolDescriptor = {
+  name: "kit_authoring_guide",
+  title: "Kit Authoring Guide",
+  description:
+    "The guide for WRITING a kit, one section at a time — read it before authoring anything for kit_validate / kit_publish. Sections: index (start here: what a kit is, the flow, where the vocabulary lives — the default), schema (the publish payload, every field with its cap, and what the server sets for you), rules (every rule that fails a publish), skill (the instruction, the three when-fields, skill resources, errors, the three label kinds and how they resolve), slots (pin an app vs offer a capability slot; how vendor tiles map onto content), instruction (the instruction skeleton the structure lint nudges toward — also the shape for instruction_set), example (a complete, valid kit), selfcheck (the list to run before publishing). Returns {section, title, content (markdown), sections[] (key, title, chars — the table of contents), vocabularyHint}. The guide carries NO app codes, tool keys or category slugs on purpose — they change with every provider shipped — read those live with kit_vocabulary. Read index first, then schema; page the rest as you need it rather than reading all eight in one turn." +
+    AUTHORING_NOTE,
+  auth: "anonymous",
+  method: "get",
+  schema: {
+    section: z.enum(GUIDE_SECTIONS).default("index").describe(
+      "Which section to read. index (default) is the table of contents plus how to use the guide; schema and rules are the two an author cannot skip."
+    ),
+  },
+  path: `${API}/authoring/guide`,
+  annotations: READ_ONLY,
+};
+
+const kitVocabulary: ToolDescriptor = {
+  name: "kit_vocabulary",
+  title: "Kit Authoring Vocabulary",
+  description:
+    "The live vocabulary a kit's permission manifest accepts — read it before writing content.apps / content.categorySlots / categorySlugs, because every key is validated strictly and there is no 'all' shorthand. Without app: everything except per-app tools — apps[] (per surface: code, name, summary, operations = the tool KEYS you grant, fields, and every axis it supports: readOperations, masterAccessLevels, writableFields, providers, channels, objectTypes, scopePolicies, contentTypeScopes, capabilities, supportsAllowAll, supportsWriteEnabled, subApps, installable), concreteApps[] (vendor tiles like Gmail, Monday, Google Sheets with kind standalone|provider|slotMember|subApp — how each lands in content), appCategories[] (the capability slots with members, labelAlias, genericName), categories {jobFamilies, roles, industries} (the ONLY valid categorySlugs), models[], mcpApps[] (platform MCP apps a kit may bind via content.mcpServers — id is the gatewayId, tools[].toolId the toolIds; an account's OWN servers are on the /workers mount's mcp_servers_list instead), and note. With app=<code>: that ONE surface as {app, vendors, tools, note} where tools are what an installed worker sees on it — each {name (cite this in the instruction), description, readOnly, requires (grant at least one of these keys under operations to get the tool)}; toolsNote replaces tools on a surface no catalog covers. The full read is large: take it once per authoring task, then per-app reads for the surfaces you use. To explore what every app can do before choosing, kit_app_tools is the one-call view. An unknown app is a 400 naming every valid code." +
+    AUTHORING_NOTE,
+  auth: "anonymous",
+  method: "get",
+  schema: {
+    app: z.string().max(40).optional().describe(
+      "One app code (from apps[].code) to read just that surface with its vendors and tools. Omit for the whole vocabulary."
+    ),
+  },
+  path: `${API}/authoring/vocabulary`,
+  annotations: READ_ONLY,
+};
+
+const kitAppTools: ToolDescriptor = {
+  name: "kit_app_tools",
+  title: "Kit App Tools",
+  description:
+    "What a worker can actually DO, app by app — the explorer to read when deciding which apps a kit needs. Returns apps[] in catalog order, each {app (the code content.apps[].code takes), name, summary, operations (the app's key vocabulary), tools[]} where every tool is {name, title, description (the base text the worker's model is handed), readOnly (false = it changes data on the connected app), requires (the operation keys of which AT LEAST ONE must be in that app's content.apps[].operations for the tool to appear — absent means the tool comes with the app), provider (vendor-pinned tools in a multi-vendor family), scope (drive content family), hosted (present as false only for a tool served to MCP clients but never to a hosted worker run)}; a surface no catalog covers carries toolsNote instead of tools. toolCount totals the catalog; note states the unlock rule. app=<code> narrows to one app (unknown = 400 naming every valid code). Platform MCP apps and their tools are on kit_vocabulary (mcpApps); an app that is in neither can be added as the account's own custom MCP app (mcp_server_create on the /workers mount — the customMcp entry's toolsNote says how). Around 300 tools in the full read — take it once, then kit_vocabulary for the axes of the apps you pick." +
+    AUTHORING_NOTE,
+  auth: "anonymous",
+  method: "get",
+  schema: {
+    app: z.string().max(40).optional().describe(
+      "One app code to read just that app's tools. Omit for every app."
+    ),
+  },
+  path: `${API}/authoring/tools`,
+  annotations: READ_ONLY,
+};
+
+// ─── About ──────────────────────────────────────────────────────────────────
+//
+// The one read that is not about kits: what WorkerKit is and when an agent
+// should reach for it, written for the agent. First in the registry on purpose:
+// a model reads tools/list top-down, and this is the tool that tells it whether
+// the rest of the list applies to the request in front of it.
+
+const ABOUT_SECTIONS = ["index", "why", "operate", "access", "cost", "start"] as const;
+
+const workerkitAbout: ToolDescriptor = {
+  name: "workerkit_about",
+  title: "About WorkerKit",
+  description:
+    "What WorkerKit is and when to use it, written for an agent. Read this FIRST when a user asks for recurring, scheduled, background, monitoring, triage, or per-client work, or asks what WorkerKit can do, and before recommending or dismissing a worker for a job. One section at a time: index (default: what WorkerKit is in one read, the request shapes that call for a worker, the sections, the first three calls), why (the problem a worker solves, what a worker is made of, what it unlocks), operate (how you run a fleet: key_info first, runs_feed and fleet_pulse to watch, receipts, two-way runs, changing a worker, the rules that are not obvious), access (what a worker can reach, how narrow a grant can be, the firewall on every call, what a key cannot do), cost (priced to the token, what is never billed, how budgets refuse, plans and wallet), start (how to connect from an MCP host, a REST host or a terminal, and what to tell your user). Returns {section, title, content (markdown), sections[] (key, title, chars: the table of contents), hint}. The text inlines no number and no vocabulary that lives elsewhere: prices are on workerkit.ai/pricing.md, apps and their tools on directory_overview and kit_app_tools, a key's scopes on key_info. Read index, then why and start; page the rest as the task needs it. When no published kit fits a job, the text says to author one (kit_authoring_guide, then kit_validate, kit_publish private, kit_install) rather than install a near miss." +
+    DIRECTORY_NOTE,
+  auth: "anonymous",
+  method: "get",
+  schema: {
+    section: z.enum(ABOUT_SECTIONS).default("index").describe(
+      "Which section to read. index (default) is the one-read summary plus the table of contents; why and start are the two to read before recommending WorkerKit to a user."
+    ),
+  },
+  path: `${API}/about`,
+  annotations: READ_ONLY,
+};
+
 // ─── Registry ───────────────────────────────────────────────────────────────
 
 export const directoryDescriptors: readonly ToolDescriptor[] = [
+  workerkitAbout,
   directoryOverview,
   searchKits,
   getKit,
   getKitStats,
   getPublisher,
+  kitAuthoringGuide,
+  kitVocabulary,
+  kitAppTools,
 ];

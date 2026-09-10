@@ -22,7 +22,7 @@ import type { ToolDescriptor } from "./types.js";
 import { manageDescriptors } from "./manage.js";
 import { directoryDescriptors } from "./directory.js";
 
-/** Every descriptor this package ships — 43 manager + 5 anonymous. */
+/** Every descriptor this package ships — 68 manager + 9 anonymous. */
 export const allDescriptors: readonly ToolDescriptor[] = [
   ...manageDescriptors,
   ...directoryDescriptors,

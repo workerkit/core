@@ -6,6 +6,71 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-10
+
+### Added
+
+Twenty-five manager descriptors and four anonymous ones — the about read, the
+kit-authoring lane, the connected-apps lane and the account's own MCP servers.
+The registry now ships 68 manager and 9 anonymous descriptors.
+
+- **About WorkerKit (anonymous, on the Directory server).** `workerkit_about`,
+  what WorkerKit is and when an agent should reach for it, written for the
+  agent and served one section at a time (index, why, operate, access, cost,
+  start): the request shapes that call for a worker, how a fleet is operated
+  from an agent's seat, the access model, the money rules, and how to connect
+  from an MCP host, a REST host or a terminal. First in the directory registry,
+  so it is the first tool a client lists.
+- **Authoring reads (anonymous, on the Directory server).** `kit_authoring_guide`,
+  the guide for writing a kit served one section at a time (schema, rules,
+  skill, slots, instruction, example, selfcheck); `kit_vocabulary`, the live
+  permission vocabulary — every app's tool keys, fields and axes, the vendor
+  tiles, the capability slots, the browse categories and the platform MCP apps a
+  kit may bind; `app=<code>` returns one surface with its vendors and tools
+  (name, description, whether it writes, and the operation keys that unlock
+  it); and `kit_app_tools`, the explorer — every app with the tools a worker
+  gets on it, each with its description and the operation key that unlocks it,
+  in one read.
+- **Connected apps (manager, `manageConnections` scope; the read on
+  `readWorkers`).** `apps_list` — which apps an operator can use right now, in
+  the kit vocabulary, with a recipe per provider saying how to connect it
+  (credential fields, or the dashboard page for an OAuth sign-in) and every
+  connection as one uniform row; `app_connect` — connect a provider by
+  credential (validated live, stored encrypted, never returned); `app_disconnect`.
+- **Model keys (same scope).** `model_keys_list`, `model_key_set`,
+  `model_key_delete` — the account's own model-provider API keys.
+- **Custom MCP servers (same scope; the reads on `readWorkers`).** How an app
+  the platform does not offer reaches a worker: `mcp_server_create` registers
+  an MCP server as the account's own custom MCP app, with the credential in the
+  same call (probed live, stored encrypted, never returned) and its tools
+  discovered; `mcp_server_set_tools` enables the tools a job needs, which
+  publishes the server so `apps_list` shows it and a kit can bind it in
+  `content.mcpServers`; `mcp_servers_list`, `mcp_server_get`,
+  `mcp_server_discover` (with the stored credential) and `mcp_server_delete`.
+  A register is atomic: a rejected credential or a URL that does not answer as
+  an MCP server leaves nothing behind.
+- `worker_get` now returns `apps[]`: every enabled app with its connection state
+  and the providers serving it.
+- **Kit authoring (manager, `publishKits` scope).** `kit_validate` (the dry run:
+  every gate's verdict at once plus the manifest that would publish),
+  `kit_publish` (from content or from an owned worker), `kit_update`,
+  `kit_replace`, `kit_unpublish`, `kit_relist`, `kit_make_private`,
+  `kit_delete`, `kit_scan_get`, `my_kits_list`, `publisher_get_mine`,
+  `publisher_set`. A private kit installed with `kit_install` is how a worker
+  is created from scratch on this surface.
+- **`worker_permissions_get`** (`readWorkers`): what a worker may touch, in the
+  same `apps[]` / `categorySlots[]` shape a kit's content takes, with rule
+  counts.
+
+### Changed
+
+- The directory tools' shared note now says the mount can neither install nor
+  publish, and points at the authoring reads — and at `mcp_server_create` for an
+  app the platform does not offer.
+- `app_connect` on one of the account's own MCP servers registered with
+  `credentialScope: "account"` sets the one shared credential; `app_disconnect`
+  removes it. An org-wide platform MCP app still answers `managed_by_admin`.
+
 ## [0.2.1] - 2026-09-10
 
 ### Fixed
