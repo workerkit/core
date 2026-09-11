@@ -1,4 +1,4 @@
-// The 62 authenticated fleet-management tools, as pure descriptors. The
+// The 74 authenticated fleet-management tools, as pure descriptors. The
 // descriptions ARE the product surface: they are served verbatim to MCP
 // clients (and any future CLI help), so every contract nuance an agent must
 // not get wrong is taught here.
@@ -57,7 +57,7 @@ const listWorkers: ToolDescriptor = {
   name: "workers_list",
   title: "List Workers",
   description:
-    "List every AI worker on this account with live status: title, avatar, status (active|paused|expired), isEnabled, expiresAt, lastRun (the newest SETTLED run — in-flight runs never appear here), schedule rollup (total/enabled/nextRunUtc), and live state (isRunning, inFlightRuns, currentRunId — poll run_get with currentRunId to watch it). Compute elapsed/next-run times against the response's serverTimeUtc, never your own clock. IMPORTANT: lastRun.resultText is the report the worker itself wrote and requires the manager key to hold the readRuns scope IN ADDITION to readWorkers — with readWorkers only it is null, which does NOT mean the run produced no report; check your key's scopes before concluding anything from a null. Scope model for every tool here: a 403 OPERATION_NOT_ALLOWED names the missing scope — the key must be re-minted with broader scopes by an account admin at https://workerkit.ai (do not retry the call).",
+    "List every AI worker on this account with live status: title, avatar, status (active|paused|expired), isEnabled, expiresAt, lastRun (the newest SETTLED run — in-flight runs never appear here), schedule rollup (total/enabled/nextRunUtc), live state (isRunning, inFlightRuns, currentRunId — poll run_get with currentRunId to watch it), and deployment (null = this worker is NOT on the hosted runtime and will never run; worker_deploy fixes that). Compute elapsed/next-run times against the response's serverTimeUtc, never your own clock. IMPORTANT: lastRun.resultText is the report the worker itself wrote and requires the manager key to hold the readRuns scope IN ADDITION to readWorkers — with readWorkers only it is null, which does NOT mean the run produced no report; check your key's scopes before concluding anything from a null. Scope model for every tool here: a 403 OPERATION_NOT_ALLOWED names the missing scope — the key must be re-minted with broader scopes by an account admin at https://workerkit.ai (do not retry the call).",
   auth: "manager",
   method: "get",
   schema: {},
@@ -69,7 +69,7 @@ const getWorker: ToolDescriptor = {
   name: "worker_get",
   title: "Get Worker",
   description:
-    "One worker in full: everything workers_list shows plus timeZoneId, maxRunsPerDay, kit provenance (templateId/slug/name), hasInstruction, isProtected, jobSentence, readiness (status ready|blocked with actionable issues — worker_inactive, no_identity, app_not_connected incl. candidateProviders, no_instruction), apps[] (every app the worker has enabled with connection connected|needs_connection|unknown and the providers serving it — the per-worker view of apps_list; an app at needs_connection is fixed with app_connect on the worker's operator or on the dashboard), and 30-day activity (runs by outcome, success rate, cost; null while hosted runs are not enabled for the environment).",
+    "One worker in full: everything workers_list shows plus timeZoneId, maxRunsPerDay, kit provenance (templateId/slug/name), hasInstruction, isProtected, jobSentence, readiness (status ready|blocked with actionable issues — worker_inactive, no_identity, app_not_connected incl. candidateProviders, no_instruction), apps[] (every app the worker has enabled with connection connected|needs_connection|unknown and the providers serving it — the per-worker view of apps_list; an app at needs_connection is fixed with app_connect on the worker's operator or on the dashboard), deployment (status + modelSlug, or NULL WHEN THE WORKER IS NOT DEPLOYED — an undeployed worker never runs, whatever readiness says, because readiness judges configuration and deployment is what puts it on the runtime; fix with worker_deploy), and 30-day activity (runs by outcome, success rate, cost; null while hosted runs are not enabled for the environment).",
   auth: "manager",
   method: "get",
   schema: {
@@ -859,7 +859,7 @@ const kitInstall: ToolDescriptor = {
   name: "kit_install",
   title: "Install Kit",
   description:
-    "Install a directory kit as a NEW worker on this account. NOT idempotent: every successful call creates another worker — never retry a success, and on a timeout check workers_list (needs the readWorkers scope) before trying again. Requires the installKits scope. Call kit_install_preview first and supply every requiredInputs key in inputs (a missing or unknown key is a 400 naming it), answers to required memorySetup questions in memoryAnswers, and one categoryChoices entry per slot (member with connectionProvider set → also pass resourceId from the preview's operatorResources). CRITICAL — secrets shown ONCE: the response's install.rawKey (the worker's pe_ API key) and install.triggers[].signingSecret can NEVER be read again; deliver them to the human immediately and do not discard the response before doing so. The response also carries readiness (status ready|blocked with actionable issues, e.g. app_not_connected + candidateProviders; null means the readiness check itself failed AFTER the install succeeded — do not retry the install, read readiness via worker_get), workerUrl (the worker's dashboard page — hand it to the human), and connectAppsUrl (where the human connects missing apps in the browser; agents cannot connect apps). A 402 {error:'limit_exceeded'} is the plan's worker cap — terminal, do not retry; tell the human to upgrade or free a slot. Rate: 10 installs/hour per account.",
+    "Install a directory kit as a NEW worker on this account. NOT idempotent: every successful call creates another worker — never retry a success, and on a timeout check workers_list (needs the readWorkers scope) before trying again. Requires the installKits scope. Call kit_install_preview first and supply every requiredInputs key in inputs (a missing or unknown key is a 400 naming it), answers to required memorySetup questions in memoryAnswers, and one categoryChoices entry per slot (member with connectionProvider set → also pass resourceId from the preview's operatorResources). CRITICAL — secrets shown ONCE: the response's install.rawKey (the worker's pe_ API key) and install.triggers[].signingSecret can NEVER be read again; deliver them to the human immediately and do not discard the response before doing so. The response also carries readiness (status ready|blocked with actionable issues, e.g. app_not_connected + candidateProviders; null means the readiness check itself failed AFTER the install succeeded — do not retry the install, read readiness via worker_get), workerUrl (the worker's dashboard page — hand it to the human), and connectAppsUrl (where the human connects missing apps in the browser; agents cannot connect apps). A 402 {error:'limit_exceeded'} is the plan's worker cap — terminal, do not retry; tell the human to upgrade or free a slot. Rate: 10 installs/hour per account. FINISHING THE JOB — installing does NOT make the worker run: without a deployment it fires no schedule and worker_run refuses it with not_deployed. Send deploy:true (optionally with modelSlug from models_list and the ceilings) to install and deploy in ONE call; the response then carries deployment. A deploy refused after the install still returns 201 with deploymentError naming what to fix — the worker exists either way, so never re-install; fix it and call worker_deploy on the same worker. deploy:true needs the manageDeployments scope IN ADDITION to installKits — a key without it is refused up front (403 OPERATION_NOT_ALLOWED naming the scope) and nothing is created, so drop deploy and install anyway, then ask the owner to re-scope the key before worker_deploy.",
   auth: "manager",
   method: "post",
   schema: {
@@ -888,6 +888,18 @@ const kitInstall: ToolDescriptor = {
     memoryAnswers: z.record(z.string(), z.string()).optional().describe(
       "Answers to memorySetup questions by key. Entries with required:true are mandatory. Keep this separate from inputs — mixing the two maps is a 400."
     ),
+    deploy: z.boolean().optional().describe(
+      "true = also put the new worker on the hosted runtime, so it actually runs. Without this the install creates a worker that fires no schedule and refuses worker_run with not_deployed. Needs the manageDeployments scope."
+    ),
+    deployment: z.object({
+      modelSlug: z.string().max(64).optional().describe("Model to deploy on, from models_list. Omit for the kit's recommended model."),
+      maxUsdPerRun: z.number().min(0.01).max(1000).optional().describe("Hard per-run ceiling in USD. Omit for the platform default."),
+      maxUsdPerDay: z.number().min(0.01).max(10000).optional().describe("Per-day reserved-spend ceiling, at least maxUsdPerRun. Omit for the platform default."),
+      thinking: z.string().max(16).optional().describe("Reasoning setting for the chosen model — see worker_deploy. Omit for 'default'."),
+      transcriptRetention: z.string().max(16).optional().describe("Transcript setting. Omit for the platform default."),
+    }).optional().describe(
+      "Deployment settings, all optional. Sending this implies deploy:true — settings for a step you did not want make no sense."
+    ),
   },
   path: (params) => `${KITS_API}/${encodeURIComponent(String(params.slug))}/install`,
   bodyBuilder: (params) => ({
@@ -897,6 +909,8 @@ const kitInstall: ToolDescriptor = {
     categoryChoices: params.categoryChoices,
     inputs: params.inputs,
     memoryAnswers: params.memoryAnswers,
+    deploy: params.deploy,
+    deployment: params.deployment,
   }),
   annotations: CREATE,
 };
@@ -1123,6 +1137,161 @@ const setFleetBudget: ToolDescriptor = {
   annotations: UPDATE,
 };
 
+// ─── Deployment (the hosted runtime) ────────────────────────────────────────
+// The step between "a worker exists" and "a worker runs". Installing a kit or
+// cloning without the deployment flag leaves a worker that is fully configured
+// and completely inert: no schedule fires and worker_run answers 409
+// not_deployed. Deploying is also where the model and the spend ceilings are
+// chosen, which is why the writes sit behind their own scope.
+
+const DEPLOYMENT_NOTE =
+  " A worker with NO DEPLOYMENT is configuration only: its schedules never fire and worker_run refuses it with 409 not_deployed. Deploying is what puts it on the runtime, and it is also where the model and the per-run / per-day spend ceilings are set. Reading a deployment rides on readWorkers; every write here needs manageDeployments.";
+
+const listModels: ToolDescriptor = {
+  name: "models_list",
+  title: "List Deployable Models",
+  description:
+    "The models this ACCOUNT may deploy a worker on, priced per million tokens — the picker for worker_deploy's modelSlug. Each row carries slug (the value deployment calls take), displayName, provider, inputUsdPerMTok / outputUsdPerMTok / cachedInputUsdPerMTok / cacheWriteInputUsdPerMTok, contextWindowK, minTier, recommended, and the reasoning vocabulary. A MODEL ABSENT FROM THIS LIST IS NOT DEPLOYABLE HERE — either the account's tier does not reach it or no live provider serves it — so never pass a slug you read somewhere else; that is a 400 one call later. reasoningStyle says what the deployment's thinking field accepts FOR THAT MODEL: 'budget' takes a per-turn token count AS A STRING ('1024', between thinkingBudgetMin and thinkingBudgetMax), 'effort' takes one of reasoningEffortOptions ('high'), 'none' takes only 'default' or 'off'. Sending the wrong kind is 400 invalid_thinking. byokProviders lists the providers this account holds its own API key for (model_keys_list) — a run on a model from one of those bills the account's key plus a platform fee instead of the wallet. Pass kitSlug to have the kit's own recommendation marked recommended:true; without it nothing is marked. Requires readWorkers." +
+    RUNTIME_NOTE,
+  auth: "manager",
+  method: "get",
+  schema: {
+    kitSlug: z.string().max(120).optional().describe(
+      "Kit slug whose recommended model should be marked recommended:true — typically the kit you are about to install or just installed. Omit when no kit is involved."
+    ),
+  },
+  path: `${API}/models`,
+  annotations: READ_ONLY,
+};
+
+const listDeployments: ToolDescriptor = {
+  name: "deployments_list",
+  title: "List Deployments",
+  description:
+    "Every DEPLOYED worker on the account with its model, spend ceilings and deployment status — the fleet answer to \"what is actually able to run\". A worker that appears in workers_list but NOT here is not on the runtime, however complete it looks: that is the single most common reason a newly built worker never produces a run. Account-scoped by the key, so it takes no worker id. Requires readWorkers." +
+    RUNTIME_NOTE,
+  auth: "manager",
+  method: "get",
+  schema: {},
+  path: `${API}/deployments`,
+  annotations: READ_ONLY,
+};
+
+const getDeployment: ToolDescriptor = {
+  name: "deployment_get",
+  title: "Get Deployment",
+  description:
+    "One worker's deployment: status, modelSlug + modelDisplayName, maxUsdPerRun / maxUsdPerDay, transcriptRetention (+ transcriptRetentionAvailable — false on a worker installed from a protected kit, where the control should not even be offered), thinking, allowPlatformEgress and warnings. 404 not_found means THE WORKER IS NOT DEPLOYED (or is not on this account — the two are indistinguishable by design); the fix is worker_deploy, not a retry. status: Provisioned / Active = it runs; Paused = schedules and run triggers are refused until deployment_update action:'resume'; Suspended = the platform stopped it and only support can lift that. Requires readWorkers." +
+    RUNTIME_NOTE,
+  auth: "manager",
+  method: "get",
+  schema: {
+    tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
+  },
+  path: (params) => `${API}/${params.tokenId}/deployment`,
+  paramFilter: () => ({}),
+  annotations: READ_ONLY,
+};
+
+const deployWorker: ToolDescriptor = {
+  name: "worker_deploy",
+  title: "Deploy Worker",
+  description:
+    "Put the worker on the hosted runtime — the step that makes it runnable and schedulable, and the one an agent most often forgets after kit_install (kit_install's own deploy:true does both in one call). EVERYTHING IS OPTIONAL: send nothing and the worker deploys on the model its kit recommends with the platform's default ceilings; 400 model_required means the kit named none, so pick one from models_list. The refusals are the deploy gauntlet and each names its fix: 422 instruction_required (the worker has no instruction — a hosted run has nothing to execute), 422 apps_not_connected (the message names the apps; fix with app_connect, or drop the app from the worker — a half-connected worker is refused rather than allowed to burn spend on a partial answer), 402 wallet_required (hosted runs meter from the prepaid wallet and AN AGENT CANNOT TOP IT UP — tell the human), 402 hosted_worker_limit, 409 already_deployed (use deployment_update instead), 400 model_unavailable / model_tier (choose another from models_list), 400 invalid_thinking (wrong reasoning vocabulary for the model), 400 invalid_caps (maxUsdPerDay below maxUsdPerRun). warnings[] on success is advisory and never blocks: ip_rules_enforced means the worker's IP allowlist will reject hosted runs, which come from platform egress. Requires manageDeployments." +
+    DEPLOYMENT_NOTE +
+    RUNTIME_NOTE +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "post",
+  schema: {
+    tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
+    modelSlug: z.string().max(64).optional().describe(
+      "Model to run on, from models_list (its slug field). Omit to take the kit's recommended model — 400 model_required when the kit named none."
+    ),
+    maxUsdPerRun: z.number().min(0.01).max(1000).optional().describe(
+      "Hard per-run ceiling in USD, 0.01-1000 — also the amount reserved from the wallet at dispatch, so it is what a run must be able to AFFORD to start. Omit for the platform default."
+    ),
+    maxUsdPerDay: z.number().min(0.01).max(10000).optional().describe(
+      "Ceiling on this worker's RESERVED spend per day, 0.01-10000. Must be at least maxUsdPerRun. Omit for the platform default."
+    ),
+    thinking: z.string().max(16).optional().describe(
+      "Per-worker reasoning, validated against the CHOSEN MODEL's reasoningStyle (models_list): 'default' (the catalog decides), 'off', a token budget as a string ('1024') for budget-style models, or an effort word ('high') for effort-style models. Omit for 'default'."
+    ),
+    transcriptRetention: z.string().max(16).optional().describe(
+      "Whether full run transcripts are kept. Omit for the platform default; a worker from a protected kit is clamped to 'off' silently, because that transcript would carry the publisher's own instructions."
+    ),
+  },
+  path: (params) => `${API}/${params.tokenId}/deployment`,
+  bodyBuilder: (params) => ({
+    modelSlug: params.modelSlug,
+    maxUsdPerRun: params.maxUsdPerRun,
+    maxUsdPerDay: params.maxUsdPerDay,
+    thinking: params.thinking,
+    transcriptRetention: params.transcriptRetention,
+  }),
+  annotations: CREATE,
+};
+
+const updateDeployment: ToolDescriptor = {
+  name: "deployment_update",
+  title: "Update Deployment",
+  description:
+    "Change a live deployment, or pause and resume it. PARTIAL: an OMITTED FIELD MEANS UNCHANGED, so one ceiling can be raised without restating the rest. action:'pause' stops schedules and run triggers while KEEPING the deployment, its model and its ceilings — the reversible way to stop a worker spending, and the one to reach for before worker_undeploy; action:'resume' puts it back, and is refused on a Suspended deployment (only support lifts that). One interplay to know: changing modelSlug WITHOUT sending thinking keeps a still-valid reasoning setting and otherwise clears it to 'default', reporting a thinking_reset warning rather than refusing the model change. 404 not_found = the worker is not deployed; deploy it with worker_deploy first. Requires manageDeployments." +
+    DEPLOYMENT_NOTE +
+    RUNTIME_NOTE +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "patch",
+  schema: {
+    tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
+    modelSlug: z.string().max(64).optional().describe(
+      "New model, from models_list. Omit to keep. Read the thinking interplay in the description before changing it."
+    ),
+    maxUsdPerRun: z.number().min(0.01).max(1000).optional().describe(
+      "New per-run ceiling in USD, 0.01-1000. Must stay at or below maxUsdPerDay. Omit to keep."
+    ),
+    maxUsdPerDay: z.number().min(0.01).max(10000).optional().describe(
+      "New per-day reserved-spend ceiling, 0.01-10000. Must be at least maxUsdPerRun. Omit to keep."
+    ),
+    thinking: z.string().max(16).optional().describe(
+      "New reasoning setting for the CURRENT model: 'default', 'off', a token budget as a string ('1024'), or an effort word ('high'). Omit to keep."
+    ),
+    transcriptRetention: z.string().max(16).optional().describe(
+      "New transcript setting. Omit to keep."
+    ),
+    action: z.enum(["pause", "resume"]).optional().describe(
+      "'pause' = stop schedules and run triggers, keeping the deployment; 'resume' = start again (refused while Suspended). Omit to change settings only."
+    ),
+  },
+  path: (params) => `${API}/${params.tokenId}/deployment`,
+  bodyBuilder: (params) => ({
+    modelSlug: params.modelSlug,
+    maxUsdPerRun: params.maxUsdPerRun,
+    maxUsdPerDay: params.maxUsdPerDay,
+    thinking: params.thinking,
+    transcriptRetention: params.transcriptRetention,
+    action: params.action,
+  }),
+  annotations: UPDATE,
+};
+
+const undeployWorker: ToolDescriptor = {
+  name: "worker_undeploy",
+  title: "Undeploy Worker",
+  description:
+    "Take the worker OFF the hosted runtime. The worker itself survives untouched — its permissions, instruction, memory, schedules and its own pe_ API key all remain, and it stays usable over MCP; it simply stops running and stops costing anything, and deployment_get answers 404 afterwards. Deploy it again with worker_deploy. PREFER deployment_update action:'pause' when the intent is 'stop for now': pause keeps the model and the ceilings, while this discards them. 204 on success, 404 when the worker was not deployed. Requires manageDeployments." +
+    RUNTIME_NOTE +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "delete",
+  schema: {
+    tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
+  },
+  path: (params) => `${API}/${params.tokenId}/deployment`,
+  successMessage: "Worker undeployed. It still exists and keeps its instruction, memory and schedules; deploy it again with worker_deploy to make it run.",
+  annotations: DELETE,
+};
+
 // ─── Permissions (read-only) ────────────────────────────────────────────────
 
 const getWorkerPermissions: ToolDescriptor = {
@@ -1257,7 +1426,7 @@ const validateKit: ToolDescriptor = {
   name: "kit_validate",
   title: "Validate Kit",
   description:
-    "Dry-run a publish: the SAME body kit_publish takes, judged by every publish gate at once — creates nothing. Returns canPublish (the verdict), errors[] and warnings[] each {section, message} (sections: metadata, categories, permissions, mcp, labels, scanner, scanner-llm, memory, appDescriptions, publisher, limits — the publish itself stops at the FIRST problem, this reports them all), lintWarnings[] (advisory structure nudges), requiredInputs[] (install-form fields the text declares), appLabels[], memorySetup[] (normalized) and manifestPreview (the exact permission manifest that would publish). The document is judged as a PUBLIC publish (visibility is a publish-time choice, not validated), so a private publish is strictly more permissive than its dry run. Only authored content can be dry-run: sourceWorkerId has nothing to validate (400). Pass kitRef when the body will REPLACE an existing listing (kit_replace), so the 50-kit cap and the republish rules are judged against that listing. Repeat until canPublish is true, then kit_publish the identical body." +
+    "Dry-run a publish: the SAME body kit_publish takes, judged by every publish gate at once — creates nothing. Returns canPublish (the verdict), errors[] and warnings[] each {section, message} (sections: metadata, categories, permissions, mcp, labels, scanner, scanner-llm, memory, appDescriptions, publisher, limits — the publish itself stops at the FIRST problem, this reports them all), lintWarnings[] (advisory structure nudges), requiredInputs[] (install-form fields the text declares), appLabels[], memorySetup[] (normalized) and manifestPreview (the exact permission manifest that would publish). The document is judged as a PUBLIC publish, so a private publish is strictly more permissive than its dry run — the one exception is the public-kit cap, which follows the body visibility because private kits are unlimited. Only authored content can be dry-run: sourceWorkerId has nothing to validate (400). Pass kitRef when the body will REPLACE an existing listing (kit_replace), so the 100-public-kit cap and the republish rules are judged against that listing. Repeat until canPublish is true, then kit_publish the identical body." +
     AUTHORING_FLOW_NOTE,
   auth: "manager",
   method: "post",
@@ -1281,7 +1450,7 @@ const publishKit: ToolDescriptor = {
   name: "kit_publish",
   title: "Publish Kit",
   description:
-    "Publish a NEW kit on this account — from authored content, or from any worker on the account (sourceWorkerId: its instruction, texts, permissions, schedules and triggers become the kit; rule VALUES never travel, only that rules exist). Exactly one of content / sourceWorkerId. NOT idempotent: every successful call creates another listing — never retry a success; on a timeout read my_kits_list before trying again. visibility 'private' (recommended first) makes a kit only this account can install: kit_install its slug and you have a worker built from scratch through the reviewed manifest pipeline. 'public' (default) lists it in the directory after the fail-closed supply-chain scan — 503 kit_scan_unavailable means retry later with the SAME body, or publish private. 400 names the FIRST failing rule (run kit_validate first to see them all). 403 = the source worker was installed from a protected kit, whose text belongs to that kit's publisher. 409 = publisherName taken (first publish only). Caps: 20 publishes/hour per account, 50 published kits per account. Returns the listing (slug, status, moderationStatus, requiredInputs, lintWarnings, …); a public listing can still be flagged minutes later by the semantic scan — re-read my_kits_list, and kit_scan_get has the findings." +
+    "Publish a NEW kit on this account — from authored content, or from any worker on the account (sourceWorkerId: its instruction, texts, permissions, schedules and triggers become the kit; rule VALUES never travel, only that rules exist). Exactly one of content / sourceWorkerId. NOT idempotent: every successful call creates another listing — never retry a success; on a timeout read my_kits_list before trying again. visibility 'private' (recommended first) makes a kit only this account can install: kit_install its slug and you have a worker built from scratch through the reviewed manifest pipeline. 'public' (default) lists it in the directory after the fail-closed supply-chain scan — 503 kit_scan_unavailable means retry later with the SAME body, or publish private. 400 names the FIRST failing rule (run kit_validate first to see them all). 403 = the source worker was installed from a protected kit, whose text belongs to that kit's publisher. 409 = publisherName taken (first publish only). Caps: 20 publishes/hour per account, 100 PUBLIC kits per account (private kits are unlimited; an unlisted or admin-removed listing still holds its slot). Returns the listing (slug, status, moderationStatus, requiredInputs, lintWarnings, …); a public listing can still be flagged minutes later by the semantic scan — re-read my_kits_list, and kit_scan_get has the findings." +
     AUTHORING_FLOW_NOTE,
   auth: "manager",
   method: "post",
@@ -1348,7 +1517,7 @@ const replaceKit: ToolDescriptor = {
   name: "kit_replace",
   title: "Replace Kit",
   description:
-    "Replace a listing WHOLESALE from authored content — the same body as kit_publish with content (required; sourceWorkerId is not allowed here). Unlike kit_update this also replaces schedules, triggers, usage windows and trigger modes. visibility chooses the resulting state and is how a private kit is PROMOTED to public (runs the scan) or a public one demoted. Timeframes, contact policy and mcpServers the content leaves null carry over from the stored manifest — a republish never silently downgrades them. The slug never changes for an already-public kit; a born-private kit takes its clean slug on its first public release. 400 on a listing an admin removed or that is taken down. Validate first: kit_validate with the same body and this kitRef. Requires the publishKits scope." +
+    "Replace a listing WHOLESALE from authored content — the same body as kit_publish with content (required; sourceWorkerId is not allowed here). Unlike kit_update this also replaces schedules, triggers, usage windows and trigger modes. visibility chooses the resulting state and is how a private kit is PROMOTED to public (runs the scan, and is the one republish the 100-public-kit cap can refuse — a kit already on the public lane keeps its slot) or a public one demoted. Timeframes, contact policy and mcpServers the content leaves null carry over from the stored manifest — a republish never silently downgrades them. The slug never changes for an already-public kit; a born-private kit takes its clean slug on its first public release. 400 on a listing an admin removed or that is taken down. Validate first: kit_validate with the same body and this kitRef. Requires the publishKits scope." +
     NEW_SCOPE_NOTE,
   auth: "manager",
   method: "put",
@@ -1740,6 +1909,12 @@ export const manageDescriptors: readonly ToolDescriptor[] = [
   getFleetBudget,
   setFleetBudget,
   getWorkerPermissions,
+  listModels,
+  listDeployments,
+  getDeployment,
+  deployWorker,
+  updateDeployment,
+  undeployWorker,
   getMyPublisher,
   setMyPublisher,
   listMyKits,

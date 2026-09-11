@@ -11,7 +11,7 @@ import {
   type ToolDescriptor,
 } from "../src/index.js";
 
-// The wire contract, pinned per descriptor: for all 47 tools, executeTool
+// The wire contract, pinned per descriptor: for all 83 tools, executeTool
 // against a recording fake client must produce exactly the {method, path,
 // query/opts, body} the live server produces today. Expected values are
 // derived from the server suite's manage-tools/directory tests so the two
@@ -68,12 +68,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 68 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
-    expect(manageDescriptors).toHaveLength(68);
+  it("ships exactly 74 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
+    expect(manageDescriptors).toHaveLength(74);
     expect(directoryDescriptors).toHaveLength(9);
-    expect(allDescriptors).toHaveLength(77);
+    expect(allDescriptors).toHaveLength(83);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(77);
+    expect(new Set(names).size).toBe(83);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -82,7 +82,7 @@ describe("registry", () => {
     for (const descriptor of directoryDescriptors) expect(descriptor.auth).toBe("anonymous");
   });
 
-  it("pins {auth, method} for every one of the 77 descriptors", () => {
+  it("pins {auth, method} for every one of the 83 descriptors", () => {
     // The full name → auth/method table. A new/renamed tool or a changed verb
     // must show up here explicitly — no descriptor ships with an unpinned method.
     expect(
@@ -133,6 +133,12 @@ describe("registry", () => {
         "fleet_budget_get manager get",
         "fleet_budget_set manager patch",
         "worker_permissions_get manager get",
+        "models_list manager get",
+        "deployments_list manager get",
+        "deployment_get manager get",
+        "worker_deploy manager post",
+        "deployment_update manager patch",
+        "worker_undeploy manager delete",
         "publisher_get_mine manager get",
         "publisher_set manager put",
         "my_kits_list manager get",
@@ -571,6 +577,57 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
       clearMaxUsdPerDay: true,
       clearMaxUsdPerMonth: false,
     });
+  });
+
+  it("models_list GETs the catalog and passes kitSlug through as query; deployments_list takes no worker id", async () => {
+    const m = await run(d("models_list"), { kitSlug: "inbox-triage" });
+    expect(m.method).toBe("get");
+    expect(m.path).toBe("/api/manage/workers/models");
+    expect(m.opts.params).toEqual({ kitSlug: "inbox-triage" });
+
+    const l = await run(d("deployments_list"), {});
+    expect(l.method).toBe("get");
+    expect(l.path).toBe("/api/manage/workers/deployments");
+    expect(l.opts.params).toEqual({});
+  });
+
+  it("the deployment lane is four verbs on one route: get, post, patch, delete", async () => {
+    // One resource path carries the whole lifecycle, so the verb is the only thing
+    // separating a read from a deploy from a teardown — pin all four.
+    const g = await run(d("deployment_get"), { tokenId: 7 });
+    expect(g.method).toBe("get");
+    expect(g.path).toBe("/api/manage/workers/7/deployment");
+    // tokenId addresses the path; it must not also leak into the query.
+    expect(g.opts.params).toEqual({});
+
+    const p = await run(d("worker_deploy"), {
+      tokenId: 7,
+      modelSlug: "some-model",
+      maxUsdPerRun: 0.5,
+      thinking: "1024",
+    });
+    expect(p.method).toBe("post");
+    expect(p.path).toBe("/api/manage/workers/7/deployment");
+    const deployBody = p.opts.body as Record<string, unknown>;
+    expect(deployBody).not.toHaveProperty("tokenId");
+    // Everything is optional: an unsent ceiling must stay off the wire so the
+    // platform default applies rather than a null overwriting it.
+    expect(wireBody(deployBody)).toEqual({
+      modelSlug: "some-model",
+      maxUsdPerRun: 0.5,
+      thinking: "1024",
+    });
+
+    const u = await run(d("deployment_update"), { tokenId: 7, action: "pause" });
+    expect(u.method).toBe("patch");
+    expect(u.path).toBe("/api/manage/workers/7/deployment");
+    // Omitted = unchanged: pausing must not restate (and so reset) the model or ceilings.
+    expect(wireBody(u.opts.body)).toEqual({ action: "pause" });
+
+    const x = await run(d("worker_undeploy"), { tokenId: 7 });
+    expect(x.method).toBe("delete");
+    expect(x.path).toBe("/api/manage/workers/7/deployment");
+    expect(x.opts.body).toBeUndefined();
   });
 
   it("kit slug schemas refuse dot segments and anything off the slug alphabet", () => {

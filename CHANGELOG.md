@@ -6,6 +6,51 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-11
+
+### Added
+
+Six manager descriptors: the hosted-deployment lane. Deploying a worker existed
+only in the WorkerKit dashboard, so a worker installed through the API, MCP or
+the CLI was created fully configured and could never run — its schedules never
+fired and `worker_run` answered 409 `not_deployed` with nothing in the toolset
+able to fix it. The registry now ships 74 manager and 9 anonymous descriptors.
+
+- **`worker_deploy`** puts a worker on the hosted runtime: pick the model and
+  the per-run / per-day spend ceilings, or send nothing and take the kit's
+  recommended model with the platform defaults. Its refusals are the deploy
+  gauntlet and each names its fix — no instruction, an app still unconnected,
+  an unfunded wallet, a model the account's tier cannot reach.
+- **`deployment_get`** and **`deployments_list`** read one deployment or every
+  deployed worker on the account — the fleet answer to which workers can
+  actually run. A worker in `workers_list` but not here is inert.
+- **`deployment_update`** changes a live deployment (model, reasoning,
+  transcript retention, ceilings) and pauses or resumes it. Pause is the
+  reversible stop that keeps the model and the ceilings.
+- **`worker_undeploy`** takes a worker off the runtime, keeping the worker, its
+  instruction, memory, schedules and its own key.
+- **`models_list`** is the model picker the deployment calls need: what this
+  account may deploy on, priced per million tokens, with the reasoning
+  vocabulary each model accepts and the providers the account holds its own key
+  for.
+
+### Changed
+
+- **`kit_install`** takes `deploy` and `deployment`, so installing and deploying
+  are one call. A deploy refused after the install still returns 201 with
+  `deploymentError` naming what to fix — the worker exists either way, so the
+  fix is `worker_deploy`, never a second install.
+- **`workers_list`** and **`worker_get`** now describe the `deployment` field
+  each worker carries, and that `null` there means the worker will never run
+  whatever its readiness says.
+
+### Note
+
+The deployment writes need the new `manageDeployments` scope. Like every scope
+younger than the manager-key surface, a key minted before it existed does not
+carry it — including one minted with "all" — so a 403 there is fixed by an
+account admin re-scoping the key, never by retrying.
+
 ## [0.3.0] - 2026-09-10
 
 ### Added
