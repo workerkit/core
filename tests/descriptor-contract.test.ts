@@ -11,7 +11,7 @@ import {
   type ToolDescriptor,
 } from "../src/index.js";
 
-// The wire contract, pinned per descriptor: for all 83 tools, executeTool
+// The wire contract, pinned per descriptor: for all 88 tools, executeTool
 // against a recording fake client must produce exactly the {method, path,
 // query/opts, body} the live server produces today. Expected values are
 // derived from the server suite's manage-tools/directory tests so the two
@@ -68,12 +68,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 74 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
-    expect(manageDescriptors).toHaveLength(74);
+  it("ships exactly 79 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
+    expect(manageDescriptors).toHaveLength(79);
     expect(directoryDescriptors).toHaveLength(9);
-    expect(allDescriptors).toHaveLength(83);
+    expect(allDescriptors).toHaveLength(88);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(83);
+    expect(new Set(names).size).toBe(88);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -82,7 +82,7 @@ describe("registry", () => {
     for (const descriptor of directoryDescriptors) expect(descriptor.auth).toBe("anonymous");
   });
 
-  it("pins {auth, method} for every one of the 83 descriptors", () => {
+  it("pins {auth, method} for every one of the 88 descriptors", () => {
     // The full name → auth/method table. A new/renamed tool or a changed verb
     // must show up here explicitly — no descriptor ships with an unpinned method.
     expect(
@@ -93,11 +93,15 @@ describe("registry", () => {
         "workers_list manager get",
         "worker_get manager get",
         "worker_run manager post",
+        "run_bulk manager post",
         "runs_feed manager get",
         "fleet_pulse manager get",
+        "fleet_health manager get",
+        "account_usage manager get",
         "worker_runs manager get",
         "run_get manager get",
         "run_events manager get",
+        "run_transcript manager get",
         "run_question manager get",
         "run_answer manager post",
         "run_cancel manager post",
@@ -123,6 +127,7 @@ describe("registry", () => {
         "instruction_version_get manager get",
         "instruction_restore manager post",
         "worker_set_enabled manager post",
+        "worker_delete manager delete",
         "kit_install_preview manager get",
         "kit_install manager post",
         "worker_clone_preview manager post",
@@ -183,12 +188,36 @@ function wireBody(body: unknown): unknown {
 }
 
 describe("manager wire contract (mirrors the server manage-tools suite)", () => {
-  it("workers_list GETs the fleet root", async () => {
+  it("workers_list GETs the fleet root, filters straight through as query", async () => {
     const c = await run(d("workers_list"), {}, "pe_mgr_unit_test");
     expect(c.method).toBe("get");
     expect(c.path).toBe("/api/manage/workers");
     expect(c.opts.params).toEqual({});
     expect(c.opts.token).toBe("pe_mgr_unit_test");
+
+    const f = await run(d("workers_list"), { status: "active", deployed: false, readiness: "blocked", q: "invoice" });
+    expect(f.path).toBe("/api/manage/workers");
+    expect(f.opts.params).toEqual({ status: "active", deployed: false, readiness: "blocked", q: "invoice" });
+  });
+
+  it("fleet_health and account_usage GET their account-wide routes with an empty query", async () => {
+    const h = await run(d("fleet_health"), {});
+    expect(h.method).toBe("get");
+    expect(h.path).toBe("/api/manage/workers/fleet/health");
+    expect(h.opts.params).toEqual({});
+
+    const u = await run(d("account_usage"), {});
+    expect(u.method).toBe("get");
+    expect(u.path).toBe("/api/manage/workers/account/usage");
+    expect(u.opts.params).toEqual({});
+  });
+
+  it("runs_feed and worker_runs both accept awaitingInput as a status", () => {
+    for (const name of ["runs_feed", "worker_runs"]) {
+      const status = d(name).schema.status as z.ZodTypeAny;
+      expect(status.safeParse("awaitingInput").success).toBe(true);
+      expect(status.safeParse("cancelled").success).toBe(false);
+    }
   });
 
   it("key_info GETs the key-info route with an empty query", async () => {
@@ -250,6 +279,25 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
     expect(del.path).toBe(`/api/manage/workers/runs/${RUN_ID}/digest`);
     // DELETE sends no body (executeTool contract).
     expect(del.opts.body).toBeUndefined();
+  });
+
+  it("run_transcript GETs the run's transcript with an empty query", async () => {
+    const c = await run(d("run_transcript"), { runId: RUN_ID });
+    expect(c.method).toBe("get");
+    expect(c.path).toBe(`/api/manage/workers/runs/${RUN_ID}/transcript`);
+    expect(c.opts.params).toEqual({});
+  });
+
+  it("run_bulk POSTs the workers array to the account-wide bulk route and nothing else", async () => {
+    const WORKER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+    const workers = [
+      { workerId: WORKER_ID, prompt: "chase invoices" },
+      { tokenId: 7, modelSlug: "gemini-2.5-flash" },
+    ];
+    const c = await run(d("run_bulk"), { workers });
+    expect(c.method).toBe("post");
+    expect(c.path).toBe("/api/manage/workers/runs/bulk");
+    expect(wireBody(c.opts.body)).toEqual({ workers });
   });
 
   it("run_score PUTs the grade, and null (clear) survives as null rather than being dropped", async () => {

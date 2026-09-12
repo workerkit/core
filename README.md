@@ -6,7 +6,7 @@
 [![license](https://img.shields.io/npm/l/%40workerkit%2Fcore.svg)](LICENSE)
 
 The shareable [WorkerKit](https://workerkit.ai) surface: an HTTP API client, the
-declarative tool-descriptor registry (74 authenticated fleet-management tools +
+declarative tool-descriptor registry (79 authenticated fleet-management tools +
 9 anonymous kits-directory tools), and the single wire-execution path that turns
 a descriptor plus parameters into exactly one upstream request.
 

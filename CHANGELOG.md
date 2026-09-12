@@ -6,6 +6,86 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-12
+
+### Added
+
+Five manager descriptors: the fleet-operations lane. Reading the state of a
+fleet took a crawl over `workers_list`, `worker_get` and `runs_feed`; the
+account's headroom, a run's raw process log, fan-out and deletion were not
+reachable from the toolset at all. The registry now ships 79 manager and 9
+anonymous descriptors.
+
+- **`fleet_health`** is the digest to brief from. A fleet operated from a chat
+  window rots quietly: workers installed but never deployed while their
+  schedules sit enabled, deployments paused with due times drifting into the
+  past, runs that ended by asking a question nobody saw, last runs refused at
+  the gate. One call returns the counts plus typed sections (`blocked`,
+  `notDeployed`, `overdueSchedules`, `awaitingInput`, `lastRunAttention`), each
+  row naming the worker and the fix. Paused and expired workers are counted,
+  never listed. The question preview inside `awaitingInput` is run content and
+  needs `readRuns`; the rest rides `readWorkers`.
+- **`account_usage`** is the headroom read: plan tier, worker slots,
+  hosted-deployment slots, the wallet's spendable balance with the top-up URL to
+  hand a human, the plan's request windows and settled run spend — so a 402 on
+  `kit_install`, `worker_deploy` or a scheduled run is something an agent plans
+  around rather than discovers. Rides `readWorkers`.
+- **`run_transcript`** reads a run's stored LLM process log, the raw record
+  behind the digest, which was readable only in the dashboard. It is opt-in per
+  deployment (`transcriptRetention`) and kept for 7 days, so the description
+  teaches the agent to read the receipt's `transcriptAvailable` first and to
+  expect 404 `no_transcript` as the normal answer on a worker that never opted
+  in. Rides `readRuns`.
+- **`run_bulk`** fans one prompt out across up to 20 workers in one call, each
+  named by `workerId` (preferred) or its deprecated `tokenId`, on a window of
+  its own (2 calls a minute, 20 an hour per account). Like `worker_clone_bulk`
+  it is not atomic and reports per item — and unlike it, a miss never aborts
+  the batch: an unknown id, a missing deployment or a cap already hit lands on
+  that item and the loop goes on. A Skipped receipt counts as a success (a run
+  was minted; its `skipReason` says why it did not start). Rides `runWorkers`.
+- **`worker_delete`** removes a worker. Deleting existed only in the WorkerKit
+  dashboard, so an agent could create workers — `kit_install`, `worker_clone` —
+  and never remove one, which also left `kit_install`'s 402 worker-cap wall
+  with no fix an agent could apply. It is permanent and not reversible by any
+  call: the key stops working, the schedules stop, and the instruction, memory,
+  deployment and delivery destinations go. Two things the description teaches
+  because an agent gets them wrong by default: deleting an orchestrator deletes
+  its sub-workers too (`subWorkersDeleted` says how many), and
+  `worker_set_enabled` with `enabled:false` is the reversible thing to reach
+  for when someone says "stop" or "turn off". Run receipts survive; the freed
+  slot is the fix for 402 `limit_exceeded`. Requires the new `deleteWorkers`
+  scope.
+
+### Changed
+
+- **`workers_list`** takes filters — `status`, `deployed`, `readiness`, `q` —
+  and answers `totalWorkers` (the unfiltered count, so an empty page is
+  readable). Every row now carries `readiness`, and `lastRun` carries
+  `skipReason` and `errorCode`.
+- **`runs_feed`** and **`worker_runs`**: `awaitingInput` joined the status
+  filter and the outcome vocabulary. The server always accepted it; the closed
+  enum here did not, which made the questions a fleet was waiting on
+  unreachable from the feed.
+- **`budget_get`** and **`budget_set`**: `maxConcurrentRuns` is set by the
+  account's plan — Free 5, Pro 20, Team 50, Enterprise uncapped — rather than
+  fixed at 1, and stays absent from `budget_set` because raising it is an
+  upgrade. It bounds runs started on demand; **`schedule_create`** and
+  **`schedule_update`** now say that a schedule never overlaps itself whatever
+  the plan allows, and **`worker_run`** points to `run_bulk` for fan-out.
+- **`worker_set_enabled`** now names itself as the reversible half of the pair,
+  so the permanent one is never picked by accident, and spells out that
+  stopping an orchestrator cascades to its sub-workers while re-enabling brings
+  back only the parent.
+- **`kit_install`** names `worker_delete` as the second way out of the 402
+  worker-cap wall, to be proposed only with the person's agreement.
+
+### Note
+
+`worker_delete` needs the new `deleteWorkers` scope. Like every scope younger
+than the manager-key surface, a key minted before it existed does not carry
+it — including one minted with "all" — so a 403 there is fixed by an account
+admin re-scoping the key, never by retrying.
+
 ## [0.3.1] - 2026-09-11
 
 ### Added

@@ -1,4 +1,4 @@
-// The 74 authenticated fleet-management tools, as pure descriptors. The
+// The 79 authenticated fleet-management tools, as pure descriptors. The
 // descriptions ARE the product surface: they are served verbatim to MCP
 // clients (and any future CLI help), so every contract nuance an agent must
 // not get wrong is taught here.
@@ -57,11 +57,46 @@ const listWorkers: ToolDescriptor = {
   name: "workers_list",
   title: "List Workers",
   description:
-    "List every AI worker on this account with live status: title, avatar, status (active|paused|expired), isEnabled, expiresAt, lastRun (the newest SETTLED run — in-flight runs never appear here), schedule rollup (total/enabled/nextRunUtc), live state (isRunning, inFlightRuns, currentRunId — poll run_get with currentRunId to watch it), and deployment (null = this worker is NOT on the hosted runtime and will never run; worker_deploy fixes that). Compute elapsed/next-run times against the response's serverTimeUtc, never your own clock. IMPORTANT: lastRun.resultText is the report the worker itself wrote and requires the manager key to hold the readRuns scope IN ADDITION to readWorkers — with readWorkers only it is null, which does NOT mean the run produced no report; check your key's scopes before concluding anything from a null. Scope model for every tool here: a 403 OPERATION_NOT_ALLOWED names the missing scope — the key must be re-minted with broader scopes by an account admin at https://workerkit.ai (do not retry the call).",
+    "List the AI workers on this account with live status: title, avatar, status (active|paused|expired), isEnabled, expiresAt, readiness (status ready|blocked with the actionable issues — the same block worker_get carries), deployment (null = this worker is NOT on the hosted runtime and will never run, whatever readiness says; worker_deploy fixes that), lastRun (the newest SETTLED run: runId, outcome succeeded|attention|failed|awaitingInput|skipped|canceled, skipReason, errorCode — in-flight runs never appear here), schedule rollup (total/enabled/nextRunUtc), and live state (isRunning, inFlightRuns, currentRunId — poll run_get with currentRunId to watch it). FILTERS, all optional and ANDed: status, deployed, readiness, q (title substring); an unknown status/readiness value is a 400 invalid_filter, never an empty page. totalWorkers is the count BEFORE filtering: 0 means nothing is installed on this account yet (shortlist a kit with kits_search on the Directory server, kit_install it with deploy:true), non-zero with an empty workers[] means the filter matched nothing. For 'what is wrong with this fleet' call fleet_health instead of scanning this list. Compute elapsed/next-run times against the response's serverTimeUtc, never your own clock. IMPORTANT: lastRun.resultText is the report the worker itself wrote and requires the manager key to hold the readRuns scope IN ADDITION to readWorkers — with readWorkers only it is null, which does NOT mean the run produced no report; check your key's scopes before concluding anything from a null. Scope model for every tool here: a 403 OPERATION_NOT_ALLOWED names the missing scope — the key must be re-minted with broader scopes by an account admin at https://workerkit.ai (do not retry the call).",
+  auth: "manager",
+  method: "get",
+  schema: {
+    status: z.enum(["active", "paused", "expired"]).optional().describe(
+      "Only workers in this lifecycle state. paused = stopped with worker_set_enabled; expired = the key's expiry passed. Omit for all."
+    ),
+    deployed: z.boolean().optional().describe(
+      "true = only workers on the hosted runtime (the ones that can run); false = only workers without a deployment. Omit for both."
+    ),
+    readiness: z.enum(["ready", "blocked"]).optional().describe(
+      "ready = configuration lets it run hosted; blocked = something actionable is missing (an app connection, an instruction, an identity). Omit for both."
+    ),
+    q: z.string().max(100).optional().describe("Case-insensitive substring of the worker's title."),
+  },
+  path: API,
+  annotations: READ_ONLY,
+};
+
+const fleetHealth: ToolDescriptor = {
+  name: "fleet_health",
+  title: "Fleet Health",
+  description:
+    "The fleet's rot in ONE call — the digest to brief from instead of crawling workers_list + worker_get + runs_feed: counts (workers, active, paused, expired, runsInFlight, and one per section: blocked, notDeployed, overdueSchedules, awaitingInput, lastRunAttention) plus five typed sections, each row naming the worker (workerId, tokenId, title) and what to do. blocked[] = active workers whose readiness is blocked, with issues[] (app_not_connected → app_connect on the worker's operator or the human at the dashboard; no_instruction → instruction_set; no_identity → the dashboard). notDeployed[] = active workers with NO hosted deployment: they fire no schedule and refuse worker_run with not_deployed, however ready they look — enabledSchedules > 0 there is a schedule that will never run until worker_deploy; readiness says whether deploying is enough. overdueSchedules[] = deployed workers whose earliest enabled schedule was due more than 15 minutes ago and was never claimed (nextRunUtc, overdueMinutes, deploymentStatus — Paused explains it by itself: deployment_update with resume). awaitingInput[] = runs that ended by ASKING their owner and are still waiting (questionId, runId, askedAtUtc, expiresAtUtc, chainDepth, and question — a 300-char preview that needs readRuns and is NULL without it: that null is a scope gap, not an empty question; run_question has the full text and options, run_answer takes the runId). lastRunAttention[] = active workers whose newest settled run was failed (errorCode), attention (succeeded with friction — denials, tool errors, reported issues) or skipped (skipReason says why; InsufficientCredits means the wallet, TokenDisabled/DailyRunCap/FleetSpendCap name themselves). Paused and expired workers are COUNTED, never listed: stopping a worker is a decision, not rot. Empty sections are the healthy answer. Measure every age against serverTimeUtc. Requires the readWorkers scope.",
   auth: "manager",
   method: "get",
   schema: {},
-  path: API,
+  path: `${API}/fleet/health`,
+  annotations: READ_ONLY,
+};
+
+const accountUsage: ToolDescriptor = {
+  name: "account_usage",
+  title: "Account Usage",
+  description:
+    "The account's headroom — read it BEFORE an install, a deploy or a run rather than discovering a 402 afterwards. Returns operator (the one kit_install targets by default; limits are per operator), plan (tier free|pro|team|enterprise, complimentaryUntilUtc when the tier is a time-boxed invite grant), workers {used, max, remaining} (remaining 0 → kit_install, worker_clone and re-enabling a stopped worker answer 402 limit_exceeded; worker_delete frees a slot, the plan is the other way out), hostedWorkers {used, max, remaining} (the worker_deploy cap; suspended deployments do not count), wallet {spendableBalanceUsd, promoRemainingUsd, promoExpiresAtUtc, topUpUrl} (hosted runs meter from spendableBalanceUsd — at zero worker_deploy answers 402 wallet_required and scheduled runs are refused with skipReason InsufficientCredits; AN AGENT CANNOT TOP IT UP, hand the human topUpUrl), requests {daily, hourly, monthly} each {limit, used, remaining, resetsAt} (the plan's data-plane windows — the calls workers make to apps; limit 0 means that window is DISABLED on this plan, not exhausted), and spend {todayUsd, thisMonthUsd, reservedInFlightUsd} (settled run spend plus what running runs hold; null while hosted runs are not enabled for the environment). The account's OWN ceilings live on fleet_budget_get, not here. 404 not_found means the account has no active operator. Requires the readWorkers scope.",
+  auth: "manager",
+  method: "get",
+  schema: {},
+  path: `${API}/account/usage`,
   annotations: READ_ONLY,
 };
 
@@ -69,7 +104,7 @@ const getWorker: ToolDescriptor = {
   name: "worker_get",
   title: "Get Worker",
   description:
-    "One worker in full: everything workers_list shows plus timeZoneId, maxRunsPerDay, kit provenance (templateId/slug/name), hasInstruction, isProtected, jobSentence, readiness (status ready|blocked with actionable issues — worker_inactive, no_identity, app_not_connected incl. candidateProviders, no_instruction), apps[] (every app the worker has enabled with connection connected|needs_connection|unknown and the providers serving it — the per-worker view of apps_list; an app at needs_connection is fixed with app_connect on the worker's operator or on the dashboard), deployment (status + modelSlug, or NULL WHEN THE WORKER IS NOT DEPLOYED — an undeployed worker never runs, whatever readiness says, because readiness judges configuration and deployment is what puts it on the runtime; fix with worker_deploy), and 30-day activity (runs by outcome, success rate, cost; null while hosted runs are not enabled for the environment).",
+    "One worker in full: everything workers_list shows (including readiness: status ready|blocked with actionable issues — worker_inactive, no_identity, app_not_connected incl. candidateProviders, no_instruction) plus timeZoneId, maxRunsPerDay, kit provenance (templateId/slug/name), hasInstruction, isProtected, jobSentence, apps[] (every app the worker has enabled with connection connected|needs_connection|unknown and the providers serving it — the per-worker view of apps_list; an app at needs_connection is fixed with app_connect on the worker's operator or on the dashboard), deployment (status + modelSlug, or NULL WHEN THE WORKER IS NOT DEPLOYED — an undeployed worker never runs, whatever readiness says, because readiness judges configuration and deployment is what puts it on the runtime; fix with worker_deploy), and 30-day activity (runs by outcome, success rate, cost; null while hosted runs are not enabled for the environment).",
   auth: "manager",
   method: "get",
   schema: {
@@ -86,7 +121,7 @@ const runWorker: ToolDescriptor = {
   name: "worker_run",
   title: "Run Worker Now",
   description:
-    "Trigger the worker to run now (recorded as an API-triggered run, attributed to the manager key's minter). The response is the minted run's RECEIPT — read status before assuming it ran: policy rejections (kill switch, usage window, daily run/spend cap, concurrency, wallet credits, readiness, or a rejected BYOK provider key) come back as HTTP 200 with status Skipped and a skipReason telling the story; that is a normal receipt, NOT an error. Most skips clear on their own (a cap resets, concurrency frees up, credits top up) — but skipReason 'ByokKeyInvalid' / errorCode 'byok_key_invalid' means the ACCOUNT's own model-provider API key was rejected by the provider, arrives with errorDetail null (no prose), and is owner-fixable ONLY: never retry it, report it to the human so they can re-add or remove the key. Structural refusals are 409 (not_deployed, deployment_paused, deployment_suspended, model_unavailable) and 404 for an unknown worker; run-endpoint errors use the {error, message} envelope where error IS the snake_case code. prompt = what to do THIS run; omit it and the worker runs on its standing instructions. Rate limit: 30 run-triggers per minute per ACCOUNT (all of this account's keys and clients share it; other accounts do not affect you). On a 429 back off for the Retry-After — never tighten a loop in response." +
+    "Trigger the worker to run now (recorded as an API-triggered run, attributed to the manager key's minter). The response is the minted run's RECEIPT — read status before assuming it ran: policy rejections (kill switch, usage window, daily run/spend cap, concurrency, wallet credits, readiness, or a rejected BYOK provider key) come back as HTTP 200 with status Skipped and a skipReason telling the story; that is a normal receipt, NOT an error. Most skips clear on their own (a cap resets, concurrency frees up, credits top up) — but skipReason 'ByokKeyInvalid' / errorCode 'byok_key_invalid' means the ACCOUNT's own model-provider API key was rejected by the provider, arrives with errorDetail null (no prose), and is owner-fixable ONLY: never retry it, report it to the human so they can re-add or remove the key. Structural refusals are 409 (not_deployed, deployment_paused, deployment_suspended, model_unavailable) and 404 for an unknown worker; run-endpoint errors use the {error, message} envelope where error IS the snake_case code. prompt = what to do THIS run; omit it and the worker runs on its standing instructions. Rate limit: 30 run-triggers per minute per ACCOUNT (all of this account's keys and clients share it; other accounts do not affect you). On a 429 back off for the Retry-After — never tighten a loop in response. To fan one prompt across many workers, run_bulk takes up to 20 in one call on a window of its own. Runs in flight per worker are bounded by the account's plan (Free 5, Pro 20, Team 50); at that limit this answers a Skipped receipt with skipReason ConcurrencyLimit." +
     RUNTIME_NOTE,
   auth: "manager",
   method: "post",
@@ -104,6 +139,41 @@ const runWorker: ToolDescriptor = {
   annotations: TRIGGER,
 };
 
+const runWorkersBulk: ToolDescriptor = {
+  name: "run_bulk",
+  title: "Run Workers in Bulk",
+  description:
+    "Run several workers now in ONE call — a prompt fanned out across a fleet without spending the single trigger's 30/min budget one worker at a time. Up to 20 workers per call, each named by workerId (preferred) or its deprecated tokenId (the GUID wins when both are sent), each with its own optional prompt and modelSlug. IT IS NOT ATOMIC AND IT DOES NOT STOP: every worker passes the mint gauntlet on its own, so an unknown id, a missing deployment or a cap already hit is reported on THAT item (success false, errorCode, error) and the loop goes on to the next — a stale id in a fan-out never discards the nineteen runs that were fine. A SKIPPED RECEIPT IS A SUCCESS HERE: a run was minted and its status/skipReason say why it did not start, so read items[] and never the status code or minted alone. Each successful item carries runId, status, skipReason and errorCode; run_events and run_get take the runId from there. Recorded as API-triggered runs, attributed to the manager key's minter. Own window: 2 calls per minute and 20 per hour per ACCOUNT, on top of the surface windows. Requires the runWorkers scope." +
+    RUNTIME_NOTE,
+  auth: "manager",
+  method: "post",
+  schema: {
+    workers: z
+      .array(
+        z.object({
+          workerId: z.string().uuid().optional().describe(
+            "The worker's stable public id, as every response that names a worker returns it (preferred). Send this or tokenId."
+          ),
+          tokenId: z.number().int().min(1).optional().describe(
+            "The worker's deprecated numeric token ID. workerId wins when both are sent."
+          ),
+          prompt: z.string().max(8000).optional().describe(
+            "What THIS worker should do on this run (≤8000 chars). Omit to run its standing instructions unchanged."
+          ),
+          modelSlug: z.string().max(64).optional().describe(
+            "One-off model override for this worker's run (≤64 chars). Omit to use its configured model."
+          ),
+        })
+      )
+      .min(1)
+      .max(20)
+      .describe("One entry per worker to run, 1–20 of them; each needs a workerId or a tokenId."),
+  },
+  path: `${API}/runs/bulk`,
+  bodyBuilder: (params) => ({ workers: params.workers }),
+  annotations: TRIGGER,
+};
+
 // ─── Fleet-wide run reads ───────────────────────────────────────────────────
 // The two calls that watch a WHOLE fleet without fanning out per worker. Both are
 // account-scoped by the key itself, so neither takes a worker id, and both are
@@ -113,7 +183,7 @@ const runsFeed: ToolDescriptor = {
   name: "runs_feed",
   title: "Account Run Feed",
   description:
-    "Every worker's runs in ONE account-wide feed, newest first — THE fleet-watching call. When you are minding many workers, call this instead of looping workers_list or worker_runs per worker. Each row is a scan line: runId, workerId, tokenTitle, status, outcome (running|succeeded|attention|failed|skipped|canceled — 'attention' is a SUCCEEDED run that hit friction, i.e. firewall denials, tool errors or reported issues, so report it apart from a clean success), skipReason, errorCode, triggerKind, scheduleTitle, timings, the friction counts (toolCalls, firewallDenials, toolErrors, issueCount, hasBlockerIssue), and one line of what the run did in summary + summarySource ('distilled' = a condensed record of what the run ACTUALLY did; 'report' = the worker's OWN closing account; 'error'/'skipped'/'activity' = the machine's own words — these are not equally reliable, so say which one you are quoting). Carries NO cost and NO token counts by design: read those from run_get on the one run that matters. Cursor-paged, never page-numbered — scroll by passing the previous response's nextCursor back as cursor (hasMore says whether another page exists), and re-fetch with NO cursor to refresh the head; there is deliberately no total count. A cursor we did not issue is a 400 invalid_cursor — drop it and reload the head. An unknown status is a 400 invalid_status, never a silently ignored filter. Requires the readRuns scope." +
+    "Every worker's runs in ONE account-wide feed, newest first — THE fleet-watching call. When you are minding many workers, call this instead of looping workers_list or worker_runs per worker. Each row is a scan line: runId, workerId, tokenTitle, status, outcome (running|succeeded|attention|failed|awaitingInput|skipped|canceled — 'attention' is a SUCCEEDED run that hit friction, i.e. firewall denials, tool errors or reported issues, so report it apart from a clean success; 'awaitingInput' is a run that ended by asking its owner a question — waiting on a person, not broken: run_question reads it, run_answer answers it, and fleet_health lists every open one), skipReason, errorCode, triggerKind, scheduleTitle, timings, the friction counts (toolCalls, firewallDenials, toolErrors, issueCount, hasBlockerIssue), and one line of what the run did in summary + summarySource ('distilled' = a condensed record of what the run ACTUALLY did; 'report' = the worker's OWN closing account; 'error'/'skipped'/'activity' = the machine's own words — these are not equally reliable, so say which one you are quoting). Carries NO cost and NO token counts by design: read those from run_get on the one run that matters. Cursor-paged, never page-numbered — scroll by passing the previous response's nextCursor back as cursor (hasMore says whether another page exists), and re-fetch with NO cursor to refresh the head; there is deliberately no total count. A cursor we did not issue is a 400 invalid_cursor — drop it and reload the head. An unknown status is a 400 invalid_status, never a silently ignored filter. Requires the readRuns scope." +
     RUNTIME_NOTE,
   auth: "manager",
   method: "get",
@@ -124,10 +194,10 @@ const runsFeed: ToolDescriptor = {
     // two composite values.
     status: z.enum([
       "pending", "dispatched", "running", "succeeded", "failed",
-      "timedOut", "budgetExceeded", "skipped", "canceled",
+      "timedOut", "budgetExceeded", "awaitingInput", "skipped", "canceled",
       "settled", "all",
     ]).optional().describe(
-      "Filter to one run status. 'settled' is the composite for every terminal outcome (everything not in flight) — use it for a logbook, and fleet_pulse for what is running. 'all' is an explicit no-op. Omit for all runs."
+      "Filter to one run status. 'awaitingInput' = runs waiting on their owner's answer (terminal for money, open for the person). 'settled' is the composite for every terminal outcome (everything not in flight, awaitingInput included) — use it for a logbook, and fleet_pulse for what is running. 'all' is an explicit no-op. Omit for all runs."
     ),
     cursor: z.string().optional().describe(
       "Opaque cursor from the previous response's nextCursor — fetches the next (older) page. Omit to read the head of the feed."
@@ -167,8 +237,8 @@ const listRuns: ToolDescriptor = {
     // read as the real subset. These are the WorkerRunStatus names verbatim.
     status: z.enum([
       "pending", "dispatched", "running", "succeeded", "failed",
-      "timedOut", "budgetExceeded", "skipped", "canceled",
-    ]).optional().describe("Filter by run status. Omit for all runs."),
+      "timedOut", "budgetExceeded", "awaitingInput", "skipped", "canceled",
+    ]).optional().describe("Filter by run status ('awaitingInput' = waiting on the owner's answer). Omit for all runs."),
     page: z.number().int().min(1).default(1).describe("1-based page number."),
     pageSize: z.number().int().min(1).max(100).default(20).describe("Results per page (max 100)."),
     fromUtc: z.string().optional().describe(`Only runs started at/after this time. ${UTC_HINT}`),
@@ -219,6 +289,22 @@ const getRunEvents: ToolDescriptor = {
     const { runId: _runId, ...query } = params;
     return query;
   },
+  annotations: READ_ONLY,
+};
+
+const getRunTranscript: ToolDescriptor = {
+  name: "run_transcript",
+  title: "Get Run Transcript",
+  description:
+    "The run's stored LLM process log — the raw record behind the digest: every model turn and tool call, as the worker made them. EXPECT 404 no_transcript MORE OFTEN THAN 200: transcripts are OFF by default and kept for 7 days, so this answers only when the worker's deployment had transcriptRetention on before the run happened and the window has not elapsed; a worker installed from a protected kit never stores one. The run receipt's transcriptAvailable (run_get) says whether this returns 200 — branch on that rather than calling this to find out. For WHAT a run did, the digest on the receipt is the intended handoff; reach for the transcript when the digest is not enough: a run that misbehaved, a tool call to inspect, a denial to trace. Up to 1 MB. Requires the readRuns scope." +
+    RUNTIME_NOTE,
+  auth: "manager",
+  method: "get",
+  schema: {
+    runId: z.string().uuid().describe(RUN_ID_HINT),
+  },
+  path: (params) => `${API}/runs/${params.runId}/transcript`,
+  paramFilter: () => ({}),
   annotations: READ_ONLY,
 };
 
@@ -416,13 +502,20 @@ const SCHEDULE_TYPE_HINT =
 const SCHEDULE_GATE_HINT =
   " Two plan walls return 402 {error:'feature_gated', feature, upgradeTrigger, message}: feature 'schedule_cadence' means minute-based schedules are not in this plan (use EveryNHours or DailyAtTime), and 'schedule_count' means the worker is at its recurring-schedule cap (a OneShot is never counted). Both are terminal — do NOT retry; either pick an allowed cadence or tell the human to upgrade.";
 
+// The plan's per-worker concurrency is for runs started on demand. A schedule
+// never overlaps itself, whatever the plan allows: two copies of the same
+// scheduled job side by side duplicate its side effects.
+const SCHEDULE_OVERLAP_NOTE =
+  " A schedule never overlaps itself: a fire that finds any run of the worker in flight lands as a Skipped receipt (skipReason ConcurrencyLimit) whatever the plan's per-worker concurrency allows — space the schedule wider than a run takes. Runs started on demand may run alongside a scheduled one, up to the plan's limit.";
+
 const createSchedule: ToolDescriptor = {
   name: "schedule_create",
   title: "Create Schedule",
   description:
     "Create a schedule for the worker. Per-type required fields: " + SCHEDULE_TYPE_HINT +
     " Omit timeZoneId to follow the worker's own time zone (the normal case). Requires the manageSchedules scope." +
-    SCHEDULE_GATE_HINT,
+    SCHEDULE_GATE_HINT +
+    SCHEDULE_OVERLAP_NOTE,
   auth: "manager",
   method: "post",
   schema: {
@@ -461,7 +554,7 @@ const updateSchedule: ToolDescriptor = {
   title: "Update Schedule",
   description:
     "Edit a schedule (partial — omitted fields stay unchanged; timeZoneId='' clears the override so the schedule follows the worker's zone again). nextRunUtc is recomputed on every edit. Per-type field rules: " +
-    SCHEDULE_TYPE_HINT + " Requires manageSchedules." + SCHEDULE_GATE_HINT,
+    SCHEDULE_TYPE_HINT + " Requires manageSchedules." + SCHEDULE_GATE_HINT + SCHEDULE_OVERLAP_NOTE,
   auth: "manager",
   method: "patch",
   schema: {
@@ -805,7 +898,7 @@ const setWorkerEnabled: ToolDescriptor = {
   name: "worker_set_enabled",
   title: "Start or Stop Worker",
   description:
-    "Start (enabled=true) or stop (enabled=false) a worker. Stopping pauses the WHOLE worker: its own API key stops working AND its schedules stop firing; re-enabling restores both. Returns {tokenId, isEnabled}. Idempotent. Requires the manageState scope.",
+    "Start (enabled=true) or stop (enabled=false) a worker. Stopping pauses the WHOLE worker: its own API key stops working AND its schedules stop firing; re-enabling restores both. THIS IS THE REVERSIBLE ONE — reach for it whenever someone says stop, pause, turn off or disable; worker_delete is permanent and nothing undoes it. Two things about stopping an ORCHESTRATOR that the response does not tell you: it CASCADES to that worker's sub-workers (children and grandchildren), and re-enabling the parent brings back ONLY the parent — each sub-worker needs its own worker_set_enabled(tokenId, true), so check workers_list afterwards rather than assuming the fleet came back. And re-enabling consumes a worker slot: at the plan's worker cap it is refused with 402 limit_exceeded, so a worker stopped before a downgrade can be stuck stopped until the owner upgrades or deletes another worker. Returns {tokenId, isEnabled}. Idempotent. Requires the manageState scope.",
   auth: "manager",
   method: "post",
   schema: {
@@ -815,6 +908,22 @@ const setWorkerEnabled: ToolDescriptor = {
   path: (params) => `${API}/${params.tokenId}/enabled`,
   bodyBuilder: (params) => ({ enabled: params.enabled }),
   annotations: UPDATE,
+};
+
+
+const deleteWorker: ToolDescriptor = {
+  name: "worker_delete",
+  title: "Delete Worker",
+  description:
+    "Delete a worker PERMANENTLY. Not reversible by any call, on any surface: its own pe_ key stops working immediately (an agent holding it starts failing), its schedules stop firing, its instruction, memory, deployment and delivery destinations go with it, and it disappears from this API, MCP, the CLI and the dashboard alike. TO STOP A WORKER YOU MIGHT WANT BACK, USE worker_set_enabled WITH enabled:false — that pauses the key and the schedules together and is reversible (with two caveats it states: stopping cascades to sub-workers and re-enabling brings back only the worker you name, and re-enabling is refused with 402 at the plan's worker cap); THIS one cannot be undone at all, so confirm with the person before calling it, never infer it from 'get rid of', 'turn off' or 'stop'. THE SURPRISE: deleting an orchestrator DELETES ITS SUB-WORKERS TOO (children and grandchildren — a dead orchestrator must never leave live workers behind), and the response's subWorkersDeleted says how many went with it; report that number, because those workers had their own jobs. What SURVIVES: the apps stay connected for every other worker on the operator, and the run receipts stay readable through the account-wide reads (runs_feed, run_get) — a deleted worker's spending is still part of the account's history. A run in flight settles normally and is neither cancelled nor refunded; runsInFlight reports how many were running when the delete landed. Deleting FREES A WORKER SLOT, which is the fix for kit_install's 402 limit_exceeded when the owner would rather not upgrade. 404 means the worker does not exist or is not on this account — including a second delete of one already gone, so a 404 on a retry means the first call worked. Requires the deleteWorkers scope." +
+    NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "delete",
+  schema: {
+    tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
+  },
+  path: (params) => `${API}/${params.tokenId}`,
+  annotations: DELETE,
 };
 
 // ─── Kit install ────────────────────────────────────────────────────────────
@@ -859,7 +968,7 @@ const kitInstall: ToolDescriptor = {
   name: "kit_install",
   title: "Install Kit",
   description:
-    "Install a directory kit as a NEW worker on this account. NOT idempotent: every successful call creates another worker — never retry a success, and on a timeout check workers_list (needs the readWorkers scope) before trying again. Requires the installKits scope. Call kit_install_preview first and supply every requiredInputs key in inputs (a missing or unknown key is a 400 naming it), answers to required memorySetup questions in memoryAnswers, and one categoryChoices entry per slot (member with connectionProvider set → also pass resourceId from the preview's operatorResources). CRITICAL — secrets shown ONCE: the response's install.rawKey (the worker's pe_ API key) and install.triggers[].signingSecret can NEVER be read again; deliver them to the human immediately and do not discard the response before doing so. The response also carries readiness (status ready|blocked with actionable issues, e.g. app_not_connected + candidateProviders; null means the readiness check itself failed AFTER the install succeeded — do not retry the install, read readiness via worker_get), workerUrl (the worker's dashboard page — hand it to the human), and connectAppsUrl (where the human connects missing apps in the browser; agents cannot connect apps). A 402 {error:'limit_exceeded'} is the plan's worker cap — terminal, do not retry; tell the human to upgrade or free a slot. Rate: 10 installs/hour per account. FINISHING THE JOB — installing does NOT make the worker run: without a deployment it fires no schedule and worker_run refuses it with not_deployed. Send deploy:true (optionally with modelSlug from models_list and the ceilings) to install and deploy in ONE call; the response then carries deployment. A deploy refused after the install still returns 201 with deploymentError naming what to fix — the worker exists either way, so never re-install; fix it and call worker_deploy on the same worker. deploy:true needs the manageDeployments scope IN ADDITION to installKits — a key without it is refused up front (403 OPERATION_NOT_ALLOWED naming the scope) and nothing is created, so drop deploy and install anyway, then ask the owner to re-scope the key before worker_deploy.",
+    "Install a directory kit as a NEW worker on this account. NOT idempotent: every successful call creates another worker — never retry a success, and on a timeout check workers_list (needs the readWorkers scope) before trying again. Requires the installKits scope. Call kit_install_preview first and supply every requiredInputs key in inputs (a missing or unknown key is a 400 naming it), answers to required memorySetup questions in memoryAnswers, and one categoryChoices entry per slot (member with connectionProvider set → also pass resourceId from the preview's operatorResources). CRITICAL — secrets shown ONCE: the response's install.rawKey (the worker's pe_ API key) and install.triggers[].signingSecret can NEVER be read again; deliver them to the human immediately and do not discard the response before doing so. The response also carries readiness (status ready|blocked with actionable issues, e.g. app_not_connected + candidateProviders; null means the readiness check itself failed AFTER the install succeeded — do not retry the install, read readiness via worker_get), workerUrl (the worker's dashboard page — hand it to the human), and connectAppsUrl (where the human connects missing apps in the browser; agents cannot connect apps). A 402 {error:'limit_exceeded'} is the plan's worker cap — terminal, never retry the install. Two ways out: the human upgrades, or a worker is deleted to free the slot (worker_delete, with the deleteWorkers scope) — propose that only with the person's agreement, since deleting is permanent. Rate: 10 installs/hour per account. FINISHING THE JOB — installing does NOT make the worker run: without a deployment it fires no schedule and worker_run refuses it with not_deployed. Send deploy:true (optionally with modelSlug from models_list and the ceilings) to install and deploy in ONE call; the response then carries deployment. A deploy refused after the install still returns 201 with deploymentError naming what to fix — the worker exists either way, so never re-install; fix it and call worker_deploy on the same worker. deploy:true needs the manageDeployments scope IN ADDITION to installKits — a key without it is refused up front (403 OPERATION_NOT_ALLOWED naming the scope) and nothing is created, so drop deploy and install anyway, then ask the owner to re-scope the key before worker_deploy.",
   auth: "manager",
   method: "post",
   schema: {
@@ -1041,7 +1150,7 @@ const getWorkerBudget: ToolDescriptor = {
   name: "budget_get",
   title: "Get Worker Budget",
   description:
-    "One worker's spend and rate ceilings: maxUsdPerRun, maxUsdPerDay, maxRunsPerDay, maxConcurrentRuns, modelSlug, hasDeployment (plus workerId and its deprecated alias tokenId). Four readings an agent gets wrong by default. (1) maxRunsPerDay NULL MEANS THE PLATFORM DEFAULT, NOT UNLIMITED — the gate substitutes the platform's own number, so never report a null as 'no limit'. (2) maxUsdPerRun is the amount RESERVED from the wallet at dispatch, so it is also what a run must be able to AFFORD before it starts; and the day cap is counted against those RESERVATIONS rather than settled cost, so a worker reserving $0.50 under a $2/day cap is skipped on its fifth run of the day even if each one really cost a cent (the reservation is refunded when a later gate skips the run). (3) maxConcurrentRuns is enforced at mint but is CURRENTLY FIXED AT 1 rather than configurable — it is reported so the number you see is the number the gate uses, and budget_set has no parameter for it. (4) hasDeployment FALSE means hosted runs are not set up for this worker, and then the dollar figures come back as 0 because there is no deployment to read them from — that 0 means 'no deployment', NOT 'capped at zero', so check hasDeployment before quoting any ceiling. Per-worker caps do not compose; the ceiling above them is fleet_budget_get. Requires the manageBudgets scope — reading a ceiling rides the same scope as changing it." +
+    "One worker's spend and rate ceilings: maxUsdPerRun, maxUsdPerDay, maxRunsPerDay, maxConcurrentRuns, modelSlug, hasDeployment (plus workerId and its deprecated alias tokenId). Four readings an agent gets wrong by default. (1) maxRunsPerDay NULL MEANS THE PLATFORM DEFAULT, NOT UNLIMITED — the gate substitutes the platform's own number, so never report a null as 'no limit'. (2) maxUsdPerRun is the amount RESERVED from the wallet at dispatch, so it is also what a run must be able to AFFORD before it starts; and the day cap is counted against those RESERVATIONS rather than settled cost, so a worker reserving $0.50 under a $2/day cap is skipped on its fifth run of the day even if each one really cost a cent (the reservation is refunded when a later gate skips the run). (3) maxConcurrentRuns is SET BY THE ACCOUNT'S PLAN, not per worker — Free 5, Pro 20, Team 50, Enterprise uncapped — so budget_set has no parameter for it and raising it is an upgrade, not a request; it is reported so the number you see is the number the gate uses. It bounds runs started on demand (worker_run, run_bulk, webhooks); a schedule never overlaps itself whatever the plan allows. (4) hasDeployment FALSE means hosted runs are not set up for this worker, and then the dollar figures come back as 0 because there is no deployment to read them from — that 0 means 'no deployment', NOT 'capped at zero', so check hasDeployment before quoting any ceiling. Per-worker caps do not compose; the ceiling above them is fleet_budget_get. Requires the manageBudgets scope — reading a ceiling rides the same scope as changing it." +
     BUDGET_WINDOW_NOTE +
     NEW_SCOPE_NOTE,
   auth: "manager",
@@ -1058,7 +1167,7 @@ const setWorkerBudget: ToolDescriptor = {
   name: "budget_set",
   title: "Set Worker Budget",
   description:
-    "Change one worker's ceilings, and get the whole budget back as it now stands. PARTIAL: every field is optional and an OMITTED FIELD MEANS UNCHANGED, so you can raise one ceiling without restating the rest and without racing another writer's edit to a different field. Three traps. Setting maxUsdPerRun or maxUsdPerDay on a worker with NO HOSTED DEPLOYMENT is a 400 — there is nothing for a dollar cap to bind to, and budget_get's hasDeployment says which workers those are; maxRunsPerDay, by contrast, can be set on any worker. There is NO way to clear maxRunsPerDay back to the platform default here, because null already means 'leave it alone': send an explicit number instead. And LOWERING maxUsdPerRun below what a run needs does not fail loudly — it makes that worker's next run a Skipped receipt with a skipReason, which is a receipt an agent must go and read. maxConcurrentRuns is not settable (fixed at 1) and is absent from this call by design. A ZERO per-run cap is REFUSED (400), as is a day cap below the per-run cap: a zero reserve is a run that cannot start, not a worker that spends nothing — to stop a worker, use worker_set_enabled. maxRunsPerDay is clamped to the organization policy ceiling when one is enforced. The same call sets the question timeout: awaitInputTimeoutMinutes (how long a question the worker asks stays open; clearAwaitInputTimeout removes the bound). When it passes the question is closed out, never resumed with no answer, and a late answer still starts the run. Requires the manageBudgets scope." +
+    "Change one worker's ceilings, and get the whole budget back as it now stands. PARTIAL: every field is optional and an OMITTED FIELD MEANS UNCHANGED, so you can raise one ceiling without restating the rest and without racing another writer's edit to a different field. Three traps. Setting maxUsdPerRun or maxUsdPerDay on a worker with NO HOSTED DEPLOYMENT is a 400 — there is nothing for a dollar cap to bind to, and budget_get's hasDeployment says which workers those are; maxRunsPerDay, by contrast, can be set on any worker. There is NO way to clear maxRunsPerDay back to the platform default here, because null already means 'leave it alone': send an explicit number instead. And LOWERING maxUsdPerRun below what a run needs does not fail loudly — it makes that worker's next run a Skipped receipt with a skipReason, which is a receipt an agent must go and read. maxConcurrentRuns is absent from this call by design: it is set by the account's plan (Free 5, Pro 20, Team 50), so raising it is an upgrade, not a request. A ZERO per-run cap is REFUSED (400), as is a day cap below the per-run cap: a zero reserve is a run that cannot start, not a worker that spends nothing — to stop a worker, use worker_set_enabled. maxRunsPerDay is clamped to the organization policy ceiling when one is enforced. The same call sets the question timeout: awaitInputTimeoutMinutes (how long a question the worker asks stays open; clearAwaitInputTimeout removes the bound). When it passes the question is closed out, never resumed with no answer, and a late answer still starts the run. Requires the manageBudgets scope." +
     BUDGET_WINDOW_NOTE +
     NEW_SCOPE_NOTE,
   auth: "manager",
@@ -1869,11 +1978,15 @@ export const manageDescriptors: readonly ToolDescriptor[] = [
   listWorkers,
   getWorker,
   runWorker,
+  runWorkersBulk,
   runsFeed,
   fleetPulse,
+  fleetHealth,
+  accountUsage,
   listRuns,
   getRun,
   getRunEvents,
+  getRunTranscript,
   getRunQuestion,
   answerRunQuestion,
   cancelRun,
@@ -1899,6 +2012,7 @@ export const manageDescriptors: readonly ToolDescriptor[] = [
   getInstructionVersion,
   restoreInstructionVersion,
   setWorkerEnabled,
+  deleteWorker,
   kitInstallPreview,
   kitInstall,
   clonePreview,
