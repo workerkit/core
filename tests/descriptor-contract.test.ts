@@ -239,7 +239,40 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
     const c = await run(d("worker_run"), { tokenId: 7, prompt: "do the thing" });
     expect(c.method).toBe("post");
     expect(c.path).toBe("/api/manage/workers/7/run");
-    expect(c.opts.body).toEqual({ prompt: "do the thing", modelSlug: undefined });
+    expect(c.opts.body).toEqual({
+      prompt: "do the thing", modelSlug: undefined,
+      preview: undefined, sourceArgs: undefined, maxItems: undefined, waitSeconds: undefined,
+    });
+  });
+
+  it("worker_run carries a decision worker's overrides on the same run route", async () => {
+    const c = await run(d("worker_run"), {
+      tokenId: 7, preview: true, sourceArgs: { status: "open" }, maxItems: 20, waitSeconds: 30,
+    });
+    expect(c.method).toBe("post");
+    expect(c.path).toBe("/api/manage/workers/7/run");
+    expect(c.opts.body).toEqual({
+      prompt: undefined, modelSlug: undefined,
+      preview: true, sourceArgs: { status: "open" }, maxItems: 20, waitSeconds: 30,
+    });
+  });
+
+  it("instruction_get passes optionsFor as a query param; instruction_set PUTs content or answers", async () => {
+    const bare = await run(d("instruction_get"), { tokenId: 7 });
+    expect(bare.method).toBe("get");
+    expect(bare.path).toBe("/api/manage/workers/7/instruction");
+    expect(bare.opts.params).toEqual({ optionsFor: undefined });
+
+    const options = await run(d("instruction_get"), { tokenId: 7, optionsFor: "target-folder" });
+    expect(options.path).toBe("/api/manage/workers/7/instruction");
+    expect(options.opts.params).toEqual({ optionsFor: "target-folder" });
+
+    const answers = await run(d("instruction_set"), {
+      tokenId: 7, answers: { "urgent-label": "Urgent", caution: "" },
+    });
+    expect(answers.method).toBe("put");
+    expect(answers.path).toBe("/api/manage/workers/7/instruction");
+    expect(wireBody(answers.opts.body)).toEqual({ answers: { "urgent-label": "Urgent", caution: "" } });
   });
 
   it("worker_runs strips tokenId from the query but keeps the filters", async () => {
@@ -517,6 +550,7 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
       categoryChoices: [{ categoryCode: "email", memberCode: "gmail", resourceId: RESOURCE_ID }],
       inputs: { "customer-name": "Acme" },
       memoryAnswers: { tone: "formal" },
+      decisionAnswers: { "urgent-label": "Needs Reply Today" },
     });
     expect(c.method).toBe("post");
     expect(c.path).toBe("/api/manage/kits/inbox-triage/install");
@@ -533,6 +567,7 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
       categoryChoices: [{ categoryCode: "email", memberCode: "gmail", resourceId: RESOURCE_ID }],
       inputs: { "customer-name": "Acme" },
       memoryAnswers: { tone: "formal" },
+      decisionAnswers: { "urgent-label": "Needs Reply Today" },
     });
   });
 

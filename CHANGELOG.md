@@ -6,6 +6,71 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-09-18
+
+### Added
+
+Decision workers, reachable outside the dashboard for the first time. A
+decision worker judges items with a typed decision model and routes them by a
+fixed table — no prose, no model turns; its "instruction" is that table plus
+the questions its installer answers, and its run is a receipt of decisions.
+It reaches the same verbs a language worker does, in its own shape, so the
+registry still ships 79 manager and 9 anonymous descriptors.
+
+- **`worker_run`** takes `preview` (this run reports and acts on nothing,
+  whatever the deployment's mode), `sourceArgs` (narrow what is decided about)
+  and `maxItems` on a decision worker, and refuses `prompt` / `modelSlug`
+  there with `409 not_language_worker` — the mirror refusal, `409
+  not_decision_worker`, guards a language worker against the other four.
+  `waitSeconds` (0–55) holds the call until the run settles and answers the
+  settled receipt; omit it and the answer is the just-minted receipt, exactly
+  as before.
+- **`run_get`** and a waited **`worker_run`** carry a `decision` block on a
+  decision run: outcome, confidence, per-item rows with the rule that fired and
+  the action taken, findings and openQuestions. It is run content, so it needs
+  `readRuns` and comes back withheld without it.
+- **`instruction_get`** answers a decision worker with its routing table as
+  sentences, its install questions with their current answers, the ones still
+  pending (a pending question blocks both deploy and run) and the live/preview
+  mode. `optionsFor` asks one `appPick` question for its live options from the
+  worker's own connected app — never a 4xx: an app that cannot answer returns
+  an empty list with a warning saying why. The tool sent no query parameters
+  before, so it passes them through now.
+- **`instruction_set`** takes `answers` instead of `content` there — a partial
+  map, where `''` clears one. Same `manageInstructions` scope either way, and
+  the two are mutually exclusive.
+
+The authoring and install fields for the kits that carry these workers:
+
+- **`kit_install`** takes `decisionAnswers` (the preview's `decisionSetup`
+  questions, by key).
+- **`deployment_update`** takes `decisionMode`: `live` (the default — the
+  routing table's actions execute) or `preview` (every run reports what it
+  would do and acts on nothing).
+- **`kits_search`** takes `modelType` (`language` | `decision`) and its cards
+  carry it; `directory_overview` answers the `modelTypes` vocabulary.
+- `kit_publish` / `kit_validate` / `kit_replace` content names `decisionSpec`
+  and `modelType`, and `kit_install_preview`, `kit_get`, `worker_deploy` and
+  `models_list` describe the decision-kit fields and refusals
+  (`decision_setup_pending`) they already carried.
+
+### Changed
+
+- **`worker_get`** reports `modelType` and, on a decision worker,
+  `decisionPendingSetup` — the install questions still blank. It is the field
+  that says which of the above a call will accept.
+- **`worker_deploy`**'s model refusals are named as the server sends them
+  today: `400 invalid_model` and `400 model_tier_gated`, replacing
+  `model_unavailable` / `model_tier` in the description.
+- **`instruction_set`**'s `content` is now optional, so `jobSentence`,
+  `whenToUse` and `description` can be changed on their own without resending
+  the whole instruction. It was mandatory before, which the `answers` path also
+  needed lifted.
+- A description pass across both registries: the shared notes (grading,
+  delivery, cloning, deployment, the new-scope note) and the longest tool
+  descriptions say the same contract in fewer words. No parameter, path, body
+  or annotation changed with it.
+
 ## [0.3.2] - 2026-09-12
 
 ### Added

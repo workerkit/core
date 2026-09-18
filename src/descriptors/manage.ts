@@ -10,14 +10,14 @@ import { CREATE, DELETE, READ_ONLY, TRIGGER, UPDATE, type ToolDescriptor } from 
 // The null-vs-zero line is the one an agent gets wrong by default: absent means
 // nobody judged the run, and reporting that as a zero would invent a failure.
 const SCORE_NOTE =
-  " Success grading: selfScore (0-100) is the run's OWN assessment of how much of its task it accomplished, written by a grading pass over what it actually did — a self-report, not a measurement. ownerScore (0-100) is the human's grade and OVERRIDES selfScore wherever both exist. selfScoreReason is a one-line explainer for selfScore. All three are null when the run was never assessed (stateless workers and very short runs are never graded) — null means NOT ASSESSED, never zero: do not report an unassessed run as scoring 0, and do not average nulls into a success rate.";
+  " Grading: selfScore (0-100) is the run's OWN assessment of how much of its task it accomplished — a self-report, not a measurement; ownerScore (0-100) is the human's grade and OVERRIDES it wherever both exist; selfScoreReason explains selfScore in one line. All three are null when the run was never assessed (stateless workers and very short runs are not graded): null means NOT ASSESSED, never zero — never report it as 0 or average nulls into a success rate.";
 
 const API = "/api/manage/workers";
 
 // ─── Shared phrasing ────────────────────────────────────────────────────────
 
 const TOKEN_ID_HINT =
-  "The worker's numeric token ID, as returned by workers_list. A 404 not_found means the worker does not exist OR belongs to another account — the two are indistinguishable by design.";
+  "The worker's numeric tokenId, as returned by workers_list. 404 not_found = no such worker on this account (another account's is indistinguishable by design).";
 
 const RUN_ID_HINT =
   "The run's UUID, as returned by worker_run (runId), workers_list (currentRunId / lastRun.runId), or worker_runs.";
@@ -25,9 +25,14 @@ const RUN_ID_HINT =
 // The whole runs family shares this degradation mode; teach it once per tool so
 // agents never retry-loop a 422.
 const RUNTIME_NOTE =
-  " When hosted runs are not enabled for this environment the call returns 422 RUNTIME_NOT_ENABLED — an environment capability switch, not a transient error: do not retry, and note that every non-run tool keeps working.";
+  " 422 RUNTIME_NOT_ENABLED = hosted runs are switched off in this environment — a capability, not a transient error: do not retry; every non-run tool keeps working.";
 
 const UTC_HINT = "ISO 8601 UTC datetime, e.g. '2026-08-01T00:00:00Z'.";
+
+// What a decision worker's receipt carries beyond an agent run's: taught on the
+// two tools that hand a receipt back.
+const DECISION_BLOCK_NOTE =
+  " A DECISION worker's receipt carries a `decision` block: outcome (one line: how many judged, routed, below the floor, acted on), confidence (share of judged items ABOVE the confidence floor, 0–100 — not a self-score), calls, and decisions[] — one row per judged item: id, answers (question → the model's label or number), confidence, route (rule:N, else, or below_floor: not sure, escalated to the owner), action (call <tool> / escalate / none) and, in live, executed/ok. findings[] are per-question distributions, openQuestions[] the items a person should look at. The block is run CONTENT: it needs readRuns; without it the block comes back withheld (contentWithheld:true) while status, timings and cost still answer.";
 
 // A scope added to the product AFTER a key was minted never reaches that key —
 // including a key minted with "all", which stored the bitmask of the scopes that
@@ -35,7 +40,7 @@ const UTC_HINT = "ISO 8601 UTC datetime, e.g. '2026-08-01T00:00:00Z'.";
 // younger than the surface, so a 403 there is read as "re-scope the key", not
 // "retry".
 const NEW_SCOPE_NOTE =
-  " Note this scope is YOUNGER than the manager-key surface: a key minted before it existed does not carry it — including one minted with \"all\" — so a 403 here is fixed by an account admin re-scoping or re-minting the key at https://workerkit.ai, never by retrying. Read key_info's scopes list before planning work that needs it.";
+  " A key minted before this scope existed does not carry it (even one minted with \"all\"): a 403 here is fixed by an account admin re-scoping or re-minting the key at https://workerkit.ai, never by retrying — check key_info's scopes first.";
 
 // ─── Key ────────────────────────────────────────────────────────────────────
 
@@ -104,7 +109,7 @@ const getWorker: ToolDescriptor = {
   name: "worker_get",
   title: "Get Worker",
   description:
-    "One worker in full: everything workers_list shows (including readiness: status ready|blocked with actionable issues — worker_inactive, no_identity, app_not_connected incl. candidateProviders, no_instruction) plus timeZoneId, maxRunsPerDay, kit provenance (templateId/slug/name), hasInstruction, isProtected, jobSentence, apps[] (every app the worker has enabled with connection connected|needs_connection|unknown and the providers serving it — the per-worker view of apps_list; an app at needs_connection is fixed with app_connect on the worker's operator or on the dashboard), deployment (status + modelSlug, or NULL WHEN THE WORKER IS NOT DEPLOYED — an undeployed worker never runs, whatever readiness says, because readiness judges configuration and deployment is what puts it on the runtime; fix with worker_deploy), and 30-day activity (runs by outcome, success rate, cost; null while hosted runs are not enabled for the environment).",
+    "One worker in full: everything workers_list shows (including readiness: status ready|blocked with actionable issues — worker_inactive, no_identity, app_not_connected incl. candidateProviders, no_instruction) plus timeZoneId, maxRunsPerDay, kit provenance (templateId/slug/name), hasInstruction, modelType ('language' | 'decision' — a decision worker runs a routing table, not an instruction: instruction_get reads it, worker_run runs it, and decisionPendingSetup names any install question still blank), isProtected, jobSentence, apps[] (every app the worker has enabled with connection connected|needs_connection|unknown and the providers serving it — the per-worker view of apps_list; an app at needs_connection is fixed with app_connect on the worker's operator or on the dashboard), deployment (status + modelSlug, or NULL WHEN THE WORKER IS NOT DEPLOYED — an undeployed worker never runs, whatever readiness says, because readiness judges configuration and deployment is what puts it on the runtime; fix with worker_deploy), and 30-day activity (runs by outcome, success rate, cost; null while hosted runs are not enabled for the environment).",
   auth: "manager",
   method: "get",
   schema: {
@@ -121,21 +126,41 @@ const runWorker: ToolDescriptor = {
   name: "worker_run",
   title: "Run Worker Now",
   description:
-    "Trigger the worker to run now (recorded as an API-triggered run, attributed to the manager key's minter). The response is the minted run's RECEIPT — read status before assuming it ran: policy rejections (kill switch, usage window, daily run/spend cap, concurrency, wallet credits, readiness, or a rejected BYOK provider key) come back as HTTP 200 with status Skipped and a skipReason telling the story; that is a normal receipt, NOT an error. Most skips clear on their own (a cap resets, concurrency frees up, credits top up) — but skipReason 'ByokKeyInvalid' / errorCode 'byok_key_invalid' means the ACCOUNT's own model-provider API key was rejected by the provider, arrives with errorDetail null (no prose), and is owner-fixable ONLY: never retry it, report it to the human so they can re-add or remove the key. Structural refusals are 409 (not_deployed, deployment_paused, deployment_suspended, model_unavailable) and 404 for an unknown worker; run-endpoint errors use the {error, message} envelope where error IS the snake_case code. prompt = what to do THIS run; omit it and the worker runs on its standing instructions. Rate limit: 30 run-triggers per minute per ACCOUNT (all of this account's keys and clients share it; other accounts do not affect you). On a 429 back off for the Retry-After — never tighten a loop in response. To fan one prompt across many workers, run_bulk takes up to 20 in one call on a window of its own. Runs in flight per worker are bounded by the account's plan (Free 5, Pro 20, Team 50); at that limit this answers a Skipped receipt with skipReason ConcurrencyLimit." +
+    "Trigger the worker to run now (recorded as an API-triggered run, attributed to the manager key's minter). The response is the minted run's RECEIPT — read status before assuming it ran: policy rejections (kill switch, usage window, daily run/spend cap, concurrency, wallet credits, readiness, or a rejected BYOK provider key) come back as HTTP 200 with status Skipped and a skipReason telling the story; that is a normal receipt, NOT an error. Most skips clear on their own (a cap resets, concurrency frees up, credits top up) — but skipReason 'ByokKeyInvalid' / errorCode 'byok_key_invalid' means the ACCOUNT's own model-provider API key was rejected by the provider, arrives with errorDetail null (no prose), and is owner-fixable ONLY: never retry it, report it to the human so they can re-add or remove the key. Structural refusals are 409 (not_deployed, deployment_paused, deployment_suspended, model_unavailable) and 404 for an unknown worker; run-endpoint errors use the {error, message} envelope where error IS the snake_case code. prompt = what to do THIS run; omit it and the worker runs on its standing instructions. Rate limit: 30 run-triggers per minute per ACCOUNT (all of this account's keys and clients share it; other accounts do not affect you). On a 429 back off for the Retry-After — never tighten a loop in response. To fan one prompt across many workers, run_bulk takes up to 20 in one call on a window of its own. Runs in flight per worker are bounded by the account's plan (Free 5, Pro 20, Team 50); at that limit this answers a Skipped receipt with skipReason ConcurrencyLimit. The worker's model type (worker_get → modelType) decides which fields apply: a LANGUAGE worker takes prompt and modelSlug; a DECISION worker runs its own routing table and takes neither (409 not_language_worker), taking preview / sourceArgs / maxItems instead — and sending those to a language worker is 409 not_decision_worker." +
+    DECISION_BLOCK_NOTE +
     RUNTIME_NOTE,
   auth: "manager",
   method: "post",
   schema: {
     tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
     prompt: z.string().max(8000).optional().describe(
-      "What to do on THIS run (≤8000 chars). Omit to run the worker's standing instructions unchanged."
+      "Language workers: what to do on THIS run (≤8000 chars). Omit to run the worker's standing instructions unchanged."
     ),
     modelSlug: z.string().max(64).optional().describe(
-      "One-off model override for this run (≤64 chars). Omit to use the worker's configured model."
+      "Language workers: one-off model override for this run (≤64 chars). Omit to use the worker's configured model."
+    ),
+    preview: z.boolean().optional().describe(
+      "Decision workers: run THIS run in preview whatever the deployment's mode — every row says what the worker WOULD do and nothing is done. Live is never forced the other way, and it costs the same decision-model calls as a real run."
+    ),
+    sourceArgs: z.record(z.string(), z.unknown()).optional().describe(
+      "Decision workers: narrow what is decided about — values merged over the spec's source arguments for THIS run only (a ticket id, a query, a status). A plain object, no placeholders; the read still runs under the worker's own permissions, so it can only see what the worker can."
+    ),
+    maxItems: z.number().int().min(1).max(100000).optional().describe(
+      "Decision workers: judge at most this many items this run (never above the spec's own cap). ~20 reads as a table; omit for the spec's limit."
+    ),
+    waitSeconds: z.number().int().min(0).max(55).optional().describe(
+      "Hold the call until the run settles and answer the settled receipt (0–55) — worth it on a decision worker, whose runs are seconds. Omit and the answer is the just-minted receipt, followed with run_get. Past the deadline the receipt comes back with a non-terminal status: poll run_get."
     ),
   },
   path: (params) => `${API}/${params.tokenId}/run`,
-  bodyBuilder: (params) => ({ prompt: params.prompt, modelSlug: params.modelSlug }),
+  bodyBuilder: (params) => ({
+    prompt: params.prompt,
+    modelSlug: params.modelSlug,
+    preview: params.preview,
+    sourceArgs: params.sourceArgs,
+    maxItems: params.maxItems,
+    waitSeconds: params.waitSeconds,
+  }),
   annotations: TRIGGER,
 };
 
@@ -258,6 +283,7 @@ const getRun: ToolDescriptor = {
   description:
     "One run's full receipt: status, trigger, timings, token/cost metering (including billingMode 'Platform'|'Byok' and byokFeeUsd — on a Byok run modelCostUsd is the provider's list price and was NOT charged to the wallet), finalDigest (the worker's report), runPrompt/runContext, liveness (live|stalled) and lastActivity while in flight, errorCode/errorDetail, issues, and the grades (selfScore, selfScoreReason, ownerScore — set or change ownerScore with run_score). Note: footprint, turnsTimeline, issues, and priceSnapshot arrive as raw JSON strings — parse them before reasoning over their contents. Requires readRuns." +
     SCORE_NOTE +
+    DECISION_BLOCK_NOTE +
     RUNTIME_NOTE,
   auth: "manager",
   method: "get",
@@ -607,7 +633,7 @@ const deleteSchedule: ToolDescriptor = {
 // the worker's own apps), and a receipt is not a guarantee.
 
 const DELIVERY_NOTE =
-  " How delivery works: the send is PLATFORM-level and detached from the worker's own permissions — the destination row you configure IS the permission, so a worker with no email app still delivers to email. The ONE hard configuration refusal is 400 CHANNEL_NOT_CONNECTED, judged at ACCOUNT level (the operator's connected apps), so NEVER infer availability from worker_get's apps — call delivery_channels. A worker holds at most 5 destinations. Canceled runs never deliver on any channel. Skipped runs (refused at the gate) deliver to WEBHOOK destinations only, as a run.blocked event, once per worker per skip reason per UTC day. A run that ended by ASKING its owner a question (status AwaitingInput) delivers everywhere: the question is the message. Sends are AT-MOST-ONCE — never double-sent, but a crash at the wrong moment can lose one, so the run receipt's deliveries[] is a RECEIPT of what happened, not a guarantee that it did.";
+  " Delivery is PLATFORM-level, detached from the worker's own permissions: the destination row you configure IS the permission (a worker with no email app still delivers to email). The one configuration refusal is 400 CHANNEL_NOT_CONNECTED, judged at ACCOUNT level — never infer availability from worker_get's apps; call delivery_channels. At most 5 destinations per worker. Canceled runs never deliver; Skipped runs (refused at the gate) reach WEBHOOK destinations only, as run.blocked, once per worker per skip reason per UTC day; a run that ended by ASKING its owner (AwaitingInput) delivers everywhere, the question being the message. Sends are AT-MOST-ONCE: never double-sent, but a crash can lose one, so the receipt's deliveries[] records what happened, not a guarantee.";
 
 const DELIVERY_TARGET_HINT =
   "The destination. ONE shape serves every channel — set only the fields YOUR channel needs; anything else is dropped. email: to[1–10 addresses] (+ optional connectionId OR sendFrom to choose the mailbox on a multi-mailbox account). slack: channelId (+ optional workspaceId). msTeams: EITHER teamId+channelId (post to a channel) OR chatId (post to a chat) — exactly one form; both or neither is a 400. telegram: chatId, a numeric id or an @username (+ optional botId). notion: boardId — the board/database that gets one item per run with the report as its content. discord: channelId (+ optional applicationId). messaging: provider (e.g. 'TWILIO'), messagingChannel ('sms' | 'whatsapp'), to[EXACTLY ONE phone number] (+ optional from; omit for the connection's default sender). webhook: url — an absolute https URL that resolves to a PUBLIC address (private, loopback and metadata ranges are a 400 at configuration and refused again at send time; redirects are never followed).";
@@ -793,14 +819,20 @@ const getInstruction: ToolDescriptor = {
   name: "instruction_get",
   title: "Get Instruction",
   description:
-    "The worker's standing instruction: content, jobSentence, whenToUse, description, memoryProfile, selfFactsEnabled, isProtected, currentVersion, timestamps. A bare \"Operation completed successfully.\" response means the worker has NO instruction yet (HTTP 204) — use instruction_set to create one. For a worker installed from a protected kit, metadata is returned but the instruction text is REDACTED (it belongs to the kit's publisher) — that is not an error.",
+    "What the worker runs, by its model type (worker_get → modelType). A LANGUAGE worker: its standing instruction — content, jobSentence, whenToUse, description, memoryProfile, selfFactsEnabled, isProtected, currentVersion, timestamps; for a worker installed from a protected kit the metadata is returned and the text is REDACTED (it belongs to the kit's publisher), which is not an error. A DECISION worker: its routing table as sentences (narration: what it reads, what it asks per item, what it does with each answer, what happens when it is not sure), its install questions (setup[]) with the CURRENT answers, the ones still pending (pendingSetup[] — a pending question blocks deploy and run; fill them with instruction_set's answers) and decisionMode (live: the table acts; preview: runs report and act on nothing); the raw spec is withheld for a protected kit's worker. A bare \"Operation completed successfully.\" response means there is neither yet (HTTP 204) — use instruction_set. The version history (instruction_versions, instruction_restore) is language-only: a decision worker's table is versioned with its kit.",
   auth: "manager",
   method: "get",
   schema: {
     tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
+    optionsFor: z.string().max(60).optional().describe(
+      "Decision workers: one appPick install question's key (from setup[]) — answers with its LIVE options instead of the table, listed from the worker's OWN connected app through the runtime under the worker's own permissions (a folder, a label, a queue, a board). Never a 4xx for an app that could not answer: items[] comes back empty with a warning saying why (not connected, dead credential, tool refused), and you paste an id from the app into instruction_set instead. 404 when the key names no appPick question; 409 on a language-model worker."
+    ),
   },
   path: (params) => `${API}/${params.tokenId}/instruction`,
-  paramFilter: () => ({}),
+  paramFilter: (params) => {
+    const { tokenId: _tokenId, ...query } = params;
+    return query;
+  },
   annotations: READ_ONLY,
 };
 
@@ -808,12 +840,15 @@ const setInstruction: ToolDescriptor = {
   name: "instruction_set",
   title: "Set Instruction",
   description:
-    "Create or replace the worker's standing instruction (the prompt/workflow text handed to every run). A changed body snapshots the prior version. Omitted optional fields stay unchanged; empty string clears. Returns 403 OPERATION_NOT_ALLOWED for a protected kit's worker — that text belongs to its publisher; do not retry. Requires the manageInstructions scope.",
+    "Set what the worker runs: content for a LANGUAGE worker's standing instruction, answers for a DECISION worker's install questions. They are mutually exclusive — sending both is a 400. content replaces the whole instruction: a changed body snapshots the prior version, omitted optional fields stay unchanged, an empty string clears, and a protected kit's worker returns 403 OPERATION_NOT_ALLOWED because that text belongs to its publisher (do not retry). answers fills or changes the questions the routing table binds at every run, so a saved change reaches the next one — check it first with worker_run preview:true. A protected kit withholds its spec, never its questions, so answering them is not refused. Requires the manageInstructions scope either way.",
   auth: "manager",
   method: "put",
   schema: {
     tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
-    content: z.string().min(1).max(100000).describe("The instruction text (1–100,000 chars). Required — this replaces the whole content."),
+    content: z.string().min(1).max(100000).optional().describe("Language workers: the instruction text (1–100,000 chars) — replaces the whole content."),
+    answers: z.record(z.string(), z.string().max(4000)).optional().describe(
+      "Decision workers: install answers by question key, from instruction_get's setup[]. A PARTIAL map changes only the keys it names; '' clears one. A scale takes a stop's label, a choice an option's value, a list one row per line, an appPick an id (instruction_get's optionsFor lists the live ones). An unknown key or an off-menu value is a 400 naming it; 409 on a language-model worker."
+    ),
     jobSentence: z.string().max(200).optional().describe("The worker's one-liner (≤200). Omit = unchanged; '' = clear."),
     whenToUse: z.string().max(500).optional().describe("Trigger text: when this worker should be used (≤500). Omit = unchanged; '' = clear."),
     description: z.string().max(2000).optional().describe("Longer display-only description (≤2000). Omit = unchanged; '' = clear."),
@@ -827,6 +862,7 @@ const setInstruction: ToolDescriptor = {
   path: (params) => `${API}/${params.tokenId}/instruction`,
   bodyBuilder: (params) => ({
     content: params.content,
+    answers: params.answers,
     jobSentence: params.jobSentence,
     whenToUse: params.whenToUse,
     description: params.description,
@@ -947,7 +983,7 @@ const kitInstallPreview: ToolDescriptor = {
   name: "kit_install_preview",
   title: "Preview Kit Install",
   description:
-    "The kit's install form plus this account's current ability to satisfy it — call this BEFORE kit_install and gather every answer it demands. Creates nothing. Requires the installKits scope (403 names it). Returns: requiredInputs (EVERY key is mandatory at install — collect a value for each from the human, keys are exact), memorySetup (questions whose answers become the worker's first memory; only required:true entries are mandatory), categorySlots (pick ONE member per slot via categoryChoices; each member carries connection — prefer a connected one — and connectionProvider, which when set means also pass categoryChoices[].resourceId picked from operatorResources, ideally one with hasActiveConnection and a matching provider), apps + appsNeedingConnection (the connection state the new worker would START with; installing anyway is allowed — the worker starts blocked and a human finishes at connectAppsUrl), operator (which operator the install targets), limits (currentWorkers/maxWorkers — at the cap the install returns 402), kitPageUrl (the human install page). Preview is advisory: the install response's readiness block is the verdict. For the kit's full permissions manifest and instruction use kit_get on the public Directory server.",
+    "The kit's install form plus this account's current ability to satisfy it — call this BEFORE kit_install and gather every answer it demands. Creates nothing. Requires the installKits scope (403 names it). Returns: requiredInputs (EVERY key is mandatory at install — collect a value for each from the human, keys are exact), memorySetup (questions whose answers become the worker's first memory; only required:true entries are mandatory), modelType, decisionSetup, decisionNarration (a 'decision' kit runs a routing table instead of an instruction, on no model you pick: decisionNarration is that table as sentences — brief the human from it; decisionSetup are its install questions, answered by key in kit_install's decisionAnswers — a required one with no default is mandatory, except an appPick, answerable later with instruction_set; the worker starts live), categorySlots (pick ONE member per slot via categoryChoices; each member carries connection — prefer a connected one — and connectionProvider, which when set means also pass categoryChoices[].resourceId picked from operatorResources, ideally one with hasActiveConnection and a matching provider), apps + appsNeedingConnection (the connection state the new worker would START with; installing anyway is allowed — the worker starts blocked and a human finishes at connectAppsUrl), operator (which operator the install targets), limits (currentWorkers/maxWorkers — at the cap the install returns 402), kitPageUrl (the human install page). Preview is advisory: the install response's readiness block is the verdict. For the kit's full permissions manifest and instruction use kit_get on the public Directory server.",
   auth: "manager",
   method: "get",
   schema: {
@@ -968,7 +1004,7 @@ const kitInstall: ToolDescriptor = {
   name: "kit_install",
   title: "Install Kit",
   description:
-    "Install a directory kit as a NEW worker on this account. NOT idempotent: every successful call creates another worker — never retry a success, and on a timeout check workers_list (needs the readWorkers scope) before trying again. Requires the installKits scope. Call kit_install_preview first and supply every requiredInputs key in inputs (a missing or unknown key is a 400 naming it), answers to required memorySetup questions in memoryAnswers, and one categoryChoices entry per slot (member with connectionProvider set → also pass resourceId from the preview's operatorResources). CRITICAL — secrets shown ONCE: the response's install.rawKey (the worker's pe_ API key) and install.triggers[].signingSecret can NEVER be read again; deliver them to the human immediately and do not discard the response before doing so. The response also carries readiness (status ready|blocked with actionable issues, e.g. app_not_connected + candidateProviders; null means the readiness check itself failed AFTER the install succeeded — do not retry the install, read readiness via worker_get), workerUrl (the worker's dashboard page — hand it to the human), and connectAppsUrl (where the human connects missing apps in the browser; agents cannot connect apps). A 402 {error:'limit_exceeded'} is the plan's worker cap — terminal, never retry the install. Two ways out: the human upgrades, or a worker is deleted to free the slot (worker_delete, with the deleteWorkers scope) — propose that only with the person's agreement, since deleting is permanent. Rate: 10 installs/hour per account. FINISHING THE JOB — installing does NOT make the worker run: without a deployment it fires no schedule and worker_run refuses it with not_deployed. Send deploy:true (optionally with modelSlug from models_list and the ceilings) to install and deploy in ONE call; the response then carries deployment. A deploy refused after the install still returns 201 with deploymentError naming what to fix — the worker exists either way, so never re-install; fix it and call worker_deploy on the same worker. deploy:true needs the manageDeployments scope IN ADDITION to installKits — a key without it is refused up front (403 OPERATION_NOT_ALLOWED naming the scope) and nothing is created, so drop deploy and install anyway, then ask the owner to re-scope the key before worker_deploy.",
+    "Install a directory kit as a NEW worker on this account. NOT idempotent: every success creates another worker — never retry a success; on a timeout check workers_list (readWorkers) first. Requires the installKits scope. Call kit_install_preview first, then supply every requiredInputs key in inputs (a missing or unknown key is a 400 naming it), required memorySetup answers in memoryAnswers, a DECISION kit's decisionSetup answers in decisionAnswers, and one categoryChoices entry per slot (a member with connectionProvider set also takes resourceId from the preview's operatorResources). CRITICAL — secrets shown ONCE: install.rawKey (the worker's pe_ API key) and install.triggers[].signingSecret can NEVER be read again; hand them to the human before discarding the response. Also returned: readiness (ready | blocked with actionable issues such as app_not_connected + candidateProviders; null means the readiness check failed AFTER the install succeeded — read it via worker_get, never re-install), workerUrl (the worker's dashboard page — hand it to the human) and connectAppsUrl (where the human connects missing apps; agents cannot). 402 {error:'limit_exceeded'} is the plan's worker cap — terminal: the human upgrades, or frees a slot with worker_delete (deleteWorkers scope; permanent, so only with their agreement). Rate: 10 installs/hour per account. Installing does NOT make the worker run: without a deployment it fires no schedule and worker_run refuses it with not_deployed. deploy:true (optionally with deployment: modelSlug from models_list and the ceilings) installs and deploys in ONE call and the response carries deployment; a deploy refused after the install still returns 201 with deploymentError naming the fix — the worker exists, so fix it and call worker_deploy, never re-install. deploy:true needs manageDeployments IN ADDITION to installKits: a key without it is refused up front (403 OPERATION_NOT_ALLOWED) and nothing is created — drop deploy, install, and have the owner re-scope the key before worker_deploy.",
   auth: "manager",
   method: "post",
   schema: {
@@ -997,6 +1033,9 @@ const kitInstall: ToolDescriptor = {
     memoryAnswers: z.record(z.string(), z.string()).optional().describe(
       "Answers to memorySetup questions by key. Entries with required:true are mandatory. Keep this separate from inputs — mixing the two maps is a 400."
     ),
+    decisionAnswers: z.record(z.string(), z.string()).optional().describe(
+      "DECISION kits only: answers to the preview's decisionSetup questions by key — a choice takes an option's value, a scale a stop's label (or its value), a list one row per line (≤20 rows), an appPick an id (or leave it blank and answer it later with instruction_set); text and rows ≤200 chars. A required question with no default and no answer is a 400 naming it."
+    ),
     deploy: z.boolean().optional().describe(
       "true = also put the new worker on the hosted runtime, so it actually runs. Without this the install creates a worker that fires no schedule and refuses worker_run with not_deployed. Needs the manageDeployments scope."
     ),
@@ -1018,6 +1057,7 @@ const kitInstall: ToolDescriptor = {
     categoryChoices: params.categoryChoices,
     inputs: params.inputs,
     memoryAnswers: params.memoryAnswers,
+    decisionAnswers: params.decisionAnswers,
     deploy: params.deploy,
     deployment: params.deployment,
   }),
@@ -1033,7 +1073,7 @@ const kitInstall: ToolDescriptor = {
 // scope.
 
 const CLONE_NOTE =
-  " What a clone is: a copy of the source's PERMISSIONS (so it can never hold access a human did not already approve on the source) plus, by flag, the instruction, owner-authored memory, schedules, delivery destinations and the hosted deployment. Three things are deliberately NOT straight copies — schedules arrive DISABLED so a new worker never starts firing by itself (enable them with schedule_update once you are satisfied), AGENT-AUTHORED FACTS ARE NOT COPIED (only owner-authored rules and facts travel: what a worker learned about itself stays with the worker that learned it), and a webhook delivery destination arrives DISABLED WITH NO SIGNING SECRET so revoking the clone can never break its source (mint one with delivery_secret_rotate, then enable it with delivery_update; enabling it before that is refused). The clone also inherits the SAME per-run and per-day spend ceilings, so cloning multiplies the fleet's ceiling — read fleet_budget_get before a bulk clone. Instruction history does not travel: the clone starts at version 1 with the text it was given. A source whose instruction came from a PROTECTED kit is refused while includeInstruction is true — that text belongs to the kit's publisher, so install the kit again or clone with includeInstruction:false.";
+  " A clone copies the source's PERMISSIONS (it can never hold access a human did not already approve on the source) plus, by flag, the instruction, owner-authored memory, schedules, delivery destinations and the hosted deployment. Three things are deliberately not straight copies: schedules arrive DISABLED (enable with schedule_update once satisfied), AGENT-AUTHORED FACTS do not travel (only owner-authored rules and facts do), and a webhook destination arrives DISABLED WITH NO SIGNING SECRET so revoking the clone cannot break its source (delivery_secret_rotate, then delivery_update to enable). The clone inherits the SAME per-run and per-day ceilings, so cloning multiplies the fleet's ceiling — read fleet_budget_get before a bulk clone. Instruction history does not travel (the clone starts at version 1). A source whose instruction came from a PROTECTED kit is refused while includeInstruction is true — install the kit again or clone with includeInstruction:false.";
 
 const CLONE_TITLE_HINT =
   "The new worker's title, 1–120 chars. Required: a clone is never silently named after its source.";
@@ -1068,7 +1108,7 @@ const clonePreview: ToolDescriptor = {
   name: "worker_clone_preview",
   title: "Preview Worker Clone",
   description:
-    "What cloning this worker WOULD produce. CREATES NOTHING — this is the rail to run before worker_clone, and before worker_clone_bulk especially. It takes the same body as worker_clone (which is the only reason it is a POST) and answers with sourceWorkerId/sourceTitle, the title the clone would carry, apps[] (every app the clone would hold, each with whether the operator can actually serve it today — this is where you learn a clone would be born unable to run), wouldCopyInstruction, memoryItemCount, scheduleCount, deliveryCount, the deployment it would inherit (modelSlug, maxUsdPerRun, maxUsdPerDay), and the two lists that carry the verdict: BLOCKERS — reasons the clone WOULD BE REFUSED, so an empty list is what 'it would succeed' looks like — and NOTES, things that would succeed but are worth knowing (schedules landing disabled, only owner-authored memory travelling, a webhook destination arriving unarmed, the fleet's spend ceiling being multiplied). Read blockers before committing: it is a verdict, not advice. Requires the createWorkers scope." +
+    "What cloning this worker WOULD produce — CREATES NOTHING. Run it before worker_clone, and before worker_clone_bulk especially. Takes the same body as worker_clone (the only reason it is a POST) and answers with sourceWorkerId / sourceTitle, the title the clone would carry, apps[] (every app the clone would hold and whether the operator can serve it today — where you learn a clone would be born unable to run), wouldCopyInstruction, memoryItemCount, scheduleCount, deliveryCount, the deployment it would inherit (modelSlug, maxUsdPerRun, maxUsdPerDay), and two lists that carry the verdict: BLOCKERS — reasons the clone WOULD BE REFUSED (empty = it would succeed) — and NOTES, things that would succeed but are worth knowing (schedules landing disabled, only owner-authored memory travelling, a webhook destination arriving unarmed, the fleet's spend ceiling multiplying). blockers is a verdict, not advice. Requires the createWorkers scope." +
     NEW_SCOPE_NOTE +
     CLONE_NOTE,
   auth: "manager",
@@ -1095,7 +1135,7 @@ const cloneWorker: ToolDescriptor = {
   name: "worker_clone",
   title: "Clone Worker",
   description:
-    "Copy this worker into a NEW one (201 with the created worker). NOT IDEMPOTENT: every successful call creates another worker — never retry a success, and after a timeout check workers_list (needs readWorkers) before trying again. CRITICAL — the key is shown ONCE: the response's rawKey is the new worker's pe_ API key and can NEVER be read again, so hand it to the human immediately and do not discard the response before doing so. The response identifies the new worker by workerId, a UUID; every other tool on this surface addresses workers by their numeric tokenId, so look the clone up in workers_list to get one. Call worker_clone_preview first — its blockers list is the same refusal you would otherwise discover as a 400, whose message names the cause (a protected kit's instruction is the common one); 404 is an unknown or other-account source worker. The new worker starts ENABLED but with its schedules off, so nothing runs until you enable a schedule or call worker_run. Rate limit: 20 create CALLS per hour per ACCOUNT, shared with worker_clone_bulk (a bulk call of twenty workers costs one). Requires the createWorkers scope." +
+    "Copy this worker into a NEW one (201 with the created worker). NOT IDEMPOTENT: every success creates another worker — never retry a success; after a timeout check workers_list (readWorkers) first. CRITICAL — the key is shown ONCE: rawKey is the new worker's pe_ API key and can NEVER be read again; hand it to the human before discarding the response. The new worker is identified by workerId (a UUID); every other tool here addresses workers by numeric tokenId, so look the clone up in workers_list. Call worker_clone_preview first — its blockers are the same refusal you would otherwise meet as a 400 whose message names the cause (a protected kit's instruction is the common one); 404 = unknown or other-account source. The clone starts ENABLED with its schedules off: nothing runs until you enable a schedule or call worker_run. Rate: 20 create CALLS per hour per ACCOUNT, shared with worker_clone_bulk (a bulk call of twenty costs one). Requires the createWorkers scope." +
     NEW_SCOPE_NOTE +
     CLONE_NOTE,
   auth: "manager",
@@ -1121,7 +1161,7 @@ const cloneWorkerBulk: ToolDescriptor = {
   name: "worker_clone_bulk",
   title: "Clone Worker in Bulk",
   description:
-    "Clone this worker several times in ONE call — how a fleet of eighteen becomes a fleet of a hundred. IT IS NOT ATOMIC AND DOES NOT ROLL BACK: PARTIAL SUCCESS IS THE NORMAL OUTCOME, because a per-item report is more useful than discarding nineteen good workers over the twentieth's bad title, and creating-then-deleting workers is worse than never creating them. So READ items[] RATHER THAN THE STATUS CODE — a 200 with created:17 of requested:20 is a success and a failure at once; each item carries index, title, success, workerId and either rawKey or error. KEEP EVERY rawKey: each is that worker's pe_ API key, shown once and never again, and a partial-success response you discard has stranded real workers whose keys nobody has. Capped at 20 workers per call (the 21st is a 400) and rate limited to 20 create calls per hour per ACCOUNT, shared with worker_clone, because a typo here creates workers. Run worker_clone_preview once for the shape you are about to repeat — the blockers that would refuse one item will refuse all of them. Requires the createWorkers scope." +
+    "Clone this worker several times in ONE call — how a fleet of eighteen becomes a fleet of a hundred. NOT ATOMIC, NO ROLLBACK: PARTIAL SUCCESS IS THE NORMAL OUTCOME (a per-item report beats discarding nineteen good workers over the twentieth's bad title), so READ items[] RATHER THAN THE STATUS CODE — a 200 with created:17 of requested:20 is a success and a failure at once; each item carries index, title, success, workerId and either rawKey or error. KEEP EVERY rawKey: each is that worker's pe_ API key, shown once and never again; a discarded partial-success response strands real workers whose keys nobody has. Capped at 20 workers per call (the 21st is a 400) and 20 create calls per hour per ACCOUNT, shared with worker_clone — a typo here creates workers. Run worker_clone_preview once for the shape you are about to repeat: a blocker that refuses one item refuses all. Requires the createWorkers scope." +
     NEW_SCOPE_NOTE +
     CLONE_NOTE,
   auth: "manager",
@@ -1150,7 +1190,7 @@ const getWorkerBudget: ToolDescriptor = {
   name: "budget_get",
   title: "Get Worker Budget",
   description:
-    "One worker's spend and rate ceilings: maxUsdPerRun, maxUsdPerDay, maxRunsPerDay, maxConcurrentRuns, modelSlug, hasDeployment (plus workerId and its deprecated alias tokenId). Four readings an agent gets wrong by default. (1) maxRunsPerDay NULL MEANS THE PLATFORM DEFAULT, NOT UNLIMITED — the gate substitutes the platform's own number, so never report a null as 'no limit'. (2) maxUsdPerRun is the amount RESERVED from the wallet at dispatch, so it is also what a run must be able to AFFORD before it starts; and the day cap is counted against those RESERVATIONS rather than settled cost, so a worker reserving $0.50 under a $2/day cap is skipped on its fifth run of the day even if each one really cost a cent (the reservation is refunded when a later gate skips the run). (3) maxConcurrentRuns is SET BY THE ACCOUNT'S PLAN, not per worker — Free 5, Pro 20, Team 50, Enterprise uncapped — so budget_set has no parameter for it and raising it is an upgrade, not a request; it is reported so the number you see is the number the gate uses. It bounds runs started on demand (worker_run, run_bulk, webhooks); a schedule never overlaps itself whatever the plan allows. (4) hasDeployment FALSE means hosted runs are not set up for this worker, and then the dollar figures come back as 0 because there is no deployment to read them from — that 0 means 'no deployment', NOT 'capped at zero', so check hasDeployment before quoting any ceiling. Per-worker caps do not compose; the ceiling above them is fleet_budget_get. Requires the manageBudgets scope — reading a ceiling rides the same scope as changing it." +
+    "One worker's spend and rate ceilings: maxUsdPerRun, maxUsdPerDay, maxRunsPerDay, maxConcurrentRuns, modelSlug, hasDeployment (plus workerId and its deprecated alias tokenId). Four readings agents get wrong. (1) maxRunsPerDay NULL MEANS THE PLATFORM DEFAULT, NOT UNLIMITED — the gate substitutes the platform's number; never report null as 'no limit'. (2) maxUsdPerRun is RESERVED from the wallet at dispatch, so a run must be able to AFFORD it to start, and the day cap counts those RESERVATIONS, not settled cost: a worker reserving $0.50 under a $2/day cap is skipped on its fifth run even if each cost a cent (a reservation is refunded when a later gate skips the run). (3) maxConcurrentRuns is SET BY THE ACCOUNT'S PLAN, not per worker — Free 5, Pro 20, Team 50, Enterprise uncapped — so budget_set has no parameter for it and raising it is an upgrade; it bounds runs started on demand (worker_run, run_bulk, webhooks), while a schedule never overlaps itself whatever the plan allows. (4) hasDeployment FALSE means hosted runs are not set up, and the dollar figures then read 0 because there is no deployment to read them from — 'no deployment', NOT 'capped at zero'; check hasDeployment before quoting a ceiling. Per-worker caps do not compose; the ceiling above them is fleet_budget_get. Requires the manageBudgets scope — reading a ceiling rides the same scope as changing it." +
     BUDGET_WINDOW_NOTE +
     NEW_SCOPE_NOTE,
   auth: "manager",
@@ -1167,7 +1207,7 @@ const setWorkerBudget: ToolDescriptor = {
   name: "budget_set",
   title: "Set Worker Budget",
   description:
-    "Change one worker's ceilings, and get the whole budget back as it now stands. PARTIAL: every field is optional and an OMITTED FIELD MEANS UNCHANGED, so you can raise one ceiling without restating the rest and without racing another writer's edit to a different field. Three traps. Setting maxUsdPerRun or maxUsdPerDay on a worker with NO HOSTED DEPLOYMENT is a 400 — there is nothing for a dollar cap to bind to, and budget_get's hasDeployment says which workers those are; maxRunsPerDay, by contrast, can be set on any worker. There is NO way to clear maxRunsPerDay back to the platform default here, because null already means 'leave it alone': send an explicit number instead. And LOWERING maxUsdPerRun below what a run needs does not fail loudly — it makes that worker's next run a Skipped receipt with a skipReason, which is a receipt an agent must go and read. maxConcurrentRuns is absent from this call by design: it is set by the account's plan (Free 5, Pro 20, Team 50), so raising it is an upgrade, not a request. A ZERO per-run cap is REFUSED (400), as is a day cap below the per-run cap: a zero reserve is a run that cannot start, not a worker that spends nothing — to stop a worker, use worker_set_enabled. maxRunsPerDay is clamped to the organization policy ceiling when one is enforced. The same call sets the question timeout: awaitInputTimeoutMinutes (how long a question the worker asks stays open; clearAwaitInputTimeout removes the bound). When it passes the question is closed out, never resumed with no answer, and a late answer still starts the run. Requires the manageBudgets scope." +
+    "Change one worker's ceilings and get the whole budget back. PARTIAL: an OMITTED FIELD MEANS UNCHANGED, so one ceiling can be raised without restating the rest or racing another writer. Three traps. maxUsdPerRun / maxUsdPerDay on a worker with NO HOSTED DEPLOYMENT is a 400 (nothing for a dollar cap to bind to; budget_get's hasDeployment says which those are) — maxRunsPerDay can be set on any worker. maxRunsPerDay cannot be cleared back to the platform default here, because null already means 'leave it alone': send an explicit number. LOWERING maxUsdPerRun below what a run needs does not fail loudly — the worker's next run becomes a Skipped receipt with a skipReason, which you must go and read. maxConcurrentRuns is absent by design: the account's plan sets it (Free 5, Pro 20, Team 50), so raising it is an upgrade. A ZERO per-run cap is REFUSED (400), as is a day cap below the per-run cap — a zero reserve is a run that cannot start, not a worker that spends nothing; to stop a worker use worker_set_enabled. maxRunsPerDay is clamped to the organization policy ceiling when one is enforced. The same call sets the question timeout: awaitInputTimeoutMinutes (how long a question the worker asks stays open; clearAwaitInputTimeout removes the bound) — when it passes the question is closed out, never resumed unanswered, and a late answer still starts the run. Requires the manageBudgets scope." +
     BUDGET_WINDOW_NOTE +
     NEW_SCOPE_NOTE,
   auth: "manager",
@@ -1254,13 +1294,13 @@ const setFleetBudget: ToolDescriptor = {
 // chosen, which is why the writes sit behind their own scope.
 
 const DEPLOYMENT_NOTE =
-  " A worker with NO DEPLOYMENT is configuration only: its schedules never fire and worker_run refuses it with 409 not_deployed. Deploying is what puts it on the runtime, and it is also where the model and the per-run / per-day spend ceilings are set. Reading a deployment rides on readWorkers; every write here needs manageDeployments.";
+  " A worker with NO DEPLOYMENT is configuration only: its schedules never fire and worker_run refuses it with 409 not_deployed. Deploying puts it on the runtime and sets its model and per-run / per-day spend ceilings.";
 
 const listModels: ToolDescriptor = {
   name: "models_list",
   title: "List Deployable Models",
   description:
-    "The models this ACCOUNT may deploy a worker on, priced per million tokens — the picker for worker_deploy's modelSlug. Each row carries slug (the value deployment calls take), displayName, provider, inputUsdPerMTok / outputUsdPerMTok / cachedInputUsdPerMTok / cacheWriteInputUsdPerMTok, contextWindowK, minTier, recommended, and the reasoning vocabulary. A MODEL ABSENT FROM THIS LIST IS NOT DEPLOYABLE HERE — either the account's tier does not reach it or no live provider serves it — so never pass a slug you read somewhere else; that is a 400 one call later. reasoningStyle says what the deployment's thinking field accepts FOR THAT MODEL: 'budget' takes a per-turn token count AS A STRING ('1024', between thinkingBudgetMin and thinkingBudgetMax), 'effort' takes one of reasoningEffortOptions ('high'), 'none' takes only 'default' or 'off'. Sending the wrong kind is 400 invalid_thinking. byokProviders lists the providers this account holds its own API key for (model_keys_list) — a run on a model from one of those bills the account's key plus a platform fee instead of the wallet. Pass kitSlug to have the kit's own recommendation marked recommended:true; without it nothing is marked. Requires readWorkers." +
+    "The models this ACCOUNT may deploy a worker on, priced per million tokens — the picker for worker_deploy's modelSlug. Each row carries slug (the value deployment calls take), displayName, provider, inputUsdPerMTok / outputUsdPerMTok / cachedInputUsdPerMTok / cacheWriteInputUsdPerMTok, contextWindowK, minTier, recommended, and the reasoning vocabulary. A MODEL ABSENT FROM THIS LIST IS NOT DEPLOYABLE HERE — either the account's tier does not reach it or no live provider serves it — so never pass a slug you read somewhere else; that is a 400 one call later. reasoningStyle says what the deployment's thinking field accepts FOR THAT MODEL: 'budget' takes a per-turn token count AS A STRING ('1024', between thinkingBudgetMin and thinkingBudgetMax), 'effort' takes one of reasoningEffortOptions ('high'), 'none' takes only 'default' or 'off'. Sending the wrong kind is 400 invalid_thinking. byokProviders lists the providers this account holds its own API key for (model_keys_list) — a run on a model from one of those bills the account's key plus a platform fee instead of the wallet. Pass kitSlug to have the kit's own recommendation marked recommended:true; without it nothing is marked. Language-model workers only: a DECISION worker (worker_get modelType 'decision') runs the decision model and takes no modelSlug. Requires readWorkers." +
     RUNTIME_NOTE,
   auth: "manager",
   method: "get",
@@ -1306,7 +1346,7 @@ const deployWorker: ToolDescriptor = {
   name: "worker_deploy",
   title: "Deploy Worker",
   description:
-    "Put the worker on the hosted runtime — the step that makes it runnable and schedulable, and the one an agent most often forgets after kit_install (kit_install's own deploy:true does both in one call). EVERYTHING IS OPTIONAL: send nothing and the worker deploys on the model its kit recommends with the platform's default ceilings; 400 model_required means the kit named none, so pick one from models_list. The refusals are the deploy gauntlet and each names its fix: 422 instruction_required (the worker has no instruction — a hosted run has nothing to execute), 422 apps_not_connected (the message names the apps; fix with app_connect, or drop the app from the worker — a half-connected worker is refused rather than allowed to burn spend on a partial answer), 402 wallet_required (hosted runs meter from the prepaid wallet and AN AGENT CANNOT TOP IT UP — tell the human), 402 hosted_worker_limit, 409 already_deployed (use deployment_update instead), 400 model_unavailable / model_tier (choose another from models_list), 400 invalid_thinking (wrong reasoning vocabulary for the model), 400 invalid_caps (maxUsdPerDay below maxUsdPerRun). warnings[] on success is advisory and never blocks: ip_rules_enforced means the worker's IP allowlist will reject hosted runs, which come from platform egress. Requires manageDeployments." +
+    "Put the worker on the hosted runtime — what makes it runnable and schedulable, and the step most often forgotten after kit_install (whose deploy:true does both in one call). EVERYTHING IS OPTIONAL: send nothing and it deploys on the model its kit recommends with the platform's default ceilings; 400 model_required means the kit named none — pick one from models_list. Each refusal names its fix: 422 instruction_required (no instruction — a hosted run has nothing to execute), 422 apps_not_connected (the message names the apps: app_connect them or drop them from the worker — a half-connected worker is refused rather than left to burn spend on a partial answer), 402 wallet_required (hosted runs meter from the prepaid wallet and AN AGENT CANNOT TOP IT UP — tell the human), 402 hosted_worker_limit, 409 already_deployed (use deployment_update), 400 invalid_model / model_tier_gated (unknown, disabled or above the account's tier — choose another from models_list), 400 invalid_thinking (wrong reasoning vocabulary for the model), 400 invalid_caps (maxUsdPerDay below maxUsdPerRun). A DECISION worker needs neither a model nor an instruction — deploy it as is (a modelSlug or thinking value is refused: 400 invalid_model / invalid_thinking); it starts live, its routing table acting from the first run. Its one extra refusal is 400 decision_setup_pending, an install question still blank: instruction_get names it, instruction_get with optionsFor lists an appPick's live values, instruction_set fills it. warnings[] on success never blocks: ip_rules_enforced means the worker's IP allowlist will reject hosted runs, which arrive from platform egress. Requires manageDeployments." +
     DEPLOYMENT_NOTE +
     RUNTIME_NOTE +
     NEW_SCOPE_NOTE,
@@ -1345,7 +1385,7 @@ const updateDeployment: ToolDescriptor = {
   name: "deployment_update",
   title: "Update Deployment",
   description:
-    "Change a live deployment, or pause and resume it. PARTIAL: an OMITTED FIELD MEANS UNCHANGED, so one ceiling can be raised without restating the rest. action:'pause' stops schedules and run triggers while KEEPING the deployment, its model and its ceilings — the reversible way to stop a worker spending, and the one to reach for before worker_undeploy; action:'resume' puts it back, and is refused on a Suspended deployment (only support lifts that). One interplay to know: changing modelSlug WITHOUT sending thinking keeps a still-valid reasoning setting and otherwise clears it to 'default', reporting a thinking_reset warning rather than refusing the model change. 404 not_found = the worker is not deployed; deploy it with worker_deploy first. Requires manageDeployments." +
+    "Change a live deployment, or pause and resume it. PARTIAL: an OMITTED FIELD MEANS UNCHANGED, so one ceiling can be raised without restating the rest. action:'pause' stops schedules and run triggers while KEEPING the deployment, its model and its ceilings — the reversible way to stop a worker spending, and the one to reach for before worker_undeploy; action:'resume' puts it back, and is refused on a Suspended deployment (only support lifts that). One interplay to know: changing modelSlug WITHOUT sending thinking keeps a still-valid reasoning setting and otherwise clears it to 'default', reporting a thinking_reset warning rather than refusing the model change. decisionMode (decision workers only) is the Live / Preview switch — the one field that stops a decision worker's routing table acting, and the one that puts it back; 400 invalid_decision_mode on a language-model worker, and on a decision worker modelSlug / thinking are refused instead (400 invalid_model / invalid_thinking: it has no model to change). 404 not_found = the worker is not deployed; deploy it with worker_deploy first. Requires manageDeployments." +
     DEPLOYMENT_NOTE +
     RUNTIME_NOTE +
     NEW_SCOPE_NOTE,
@@ -1371,6 +1411,9 @@ const updateDeployment: ToolDescriptor = {
     action: z.enum(["pause", "resume"]).optional().describe(
       "'pause' = stop schedules and run triggers, keeping the deployment; 'resume' = start again (refused while Suspended). Omit to change settings only."
     ),
+    decisionMode: z.enum(["preview", "live"]).optional().describe(
+      "Decision workers only. 'live' (the default) = the routing table's actions execute; 'preview' = runs report what they would do and act on nothing. Omit to keep. Check a changed table with worker_run preview:true before going back to live."
+    ),
   },
   path: (params) => `${API}/${params.tokenId}/deployment`,
   bodyBuilder: (params) => ({
@@ -1380,6 +1423,7 @@ const updateDeployment: ToolDescriptor = {
     thinking: params.thinking,
     transcriptRetention: params.transcriptRetention,
     action: params.action,
+    decisionMode: params.decisionMode,
   }),
   annotations: UPDATE,
 };
@@ -1477,7 +1521,7 @@ const LISTING_SCHEMA = {
 };
 
 const CONTENT_SCHEMA = z.record(z.unknown()).describe(
-  "The kit's content: instructionContent (required), whenToUse, startCommand, endCommand, endCommandDescription, skillResources, appCodes XOR apps, categorySlots, mcpServers, contactAllowAll, blockedSenderCategories, timeframePastDays, timeframeFutureDays, maxChildTokens, memoryProfile, selfFactsEnabled, memorySetup, schedules, triggers, usageWindows. The exact shape, every cap and every rule: kit_authoring_guide section 'schema'; app codes, tool keys and category slugs: kit_vocabulary. Validated strictly server-side — unknown keys are rejected, never ignored — so kit_validate first."
+  "The kit's content: instructionContent (required on a LANGUAGE kit), whenToUse, startCommand, endCommand, endCommandDescription, skillResources, appCodes XOR apps, categorySlots, mcpServers, contactAllowAll, blockedSenderCategories, timeframePastDays, timeframeFutureDays, maxChildTokens, memoryProfile, selfFactsEnabled, memorySetup, schedules, triggers, usageWindows — or, for a DECISION kit, decisionSpec INSTEAD of instructionContent (a routing table the decision model runs per item; optionally modelType 'decision') and none of commands, whenToUse, skillResources, memorySetup or selfFactsEnabled; the compartment, stance and cadence fields apply to both kinds. Which kind a job is, the exact shape, every cap and every rule: kit_authoring_guide sections 'index' and 'schema'; app codes, tool keys and category slugs: kit_vocabulary. Validated strictly server-side — unknown keys are rejected, never ignored — so kit_validate first."
 );
 
 const getMyPublisher: ToolDescriptor = {
@@ -1877,7 +1921,7 @@ const createMcpServer: ToolDescriptor = {
   name: "mcp_server_create",
   title: "Register MCP Server",
   description:
-    "Register an MCP server as this account's own custom MCP app — the way to reach an app the platform does not offer — and list its tools in the same call. upstreamUrl must be the MCP endpoint itself (https), never a docs page, and must come from the user or the vendor's docs — never guessed. authType is what the server expects: None (default — discovered in this call, no credential), Bearer {token}, ApiKeyHeader {header, value}, ApiKeyQuery {param, value}, Basic {username, password}, CustomHeaders {headers} or McpOAuth (a human completes the sign-in on the dashboard). credential carries those fields: probed LIVE against the server before anything is stored, stored encrypted, never returned, and the tools are discovered with it. credentialScope: operator (default — each operator connects its own; this call stores it for operatorId or the default operator) or account (one credential serves every operator). Omit credential to register now and connect later with app_connect (provider mcp:<slug>). Returns 201 {server (the mcp_servers_list shape — id is what a kit binds, gatewayId what the next tools take), discovery {added, changed, removed, unchanged}, next (what to do now)}. The server is UNPUBLISHED until mcp_server_set_tools enables at least one tool. Errors: 400 credential_invalid = the server rejected the credential (nothing was kept — fix it and retry); 502 provider_unavailable = the URL did not answer as an MCP server (nothing was kept — check the endpoint or retry later); 422 invalid_url = not an https URL on a public host; 400 invalid_request names the valid authType / credentialScope values or the 25-server ceiling. Tell the user: the upstream URL becomes public listing data if a kit binding this server publishes publicly. Rate limit: 20 registers/hour per account. Requires the manageConnections scope." +
+    "Register an MCP server as this account's own custom MCP app — the way to reach an app the platform does not offer — and list its tools in the same call. upstreamUrl is the MCP endpoint itself (https), from the user or the vendor's docs, never a docs page and never guessed. authType is what the server expects: None (default — discovered in this call, no credential), Bearer {token}, ApiKeyHeader {header, value}, ApiKeyQuery {param, value}, Basic {username, password}, CustomHeaders {headers} or McpOAuth (a human completes the sign-in on the dashboard); credential carries those fields — probed LIVE against the server before anything is stored, stored encrypted, never returned, and the tools are discovered with it. credentialScope: operator (default — each operator connects its own; stored for operatorId or the default operator) or account (one credential serves every operator). Omit credential to register now and connect later with app_connect (provider mcp:<slug>). Returns 201 {server (the mcp_servers_list shape — id is what a kit binds, gatewayId what the next tools take), discovery {added, changed, removed, unchanged}, next}. The server stays UNPUBLISHED until mcp_server_set_tools enables at least one tool. Errors: 400 credential_invalid (the server rejected the credential; nothing kept — fix and retry), 502 provider_unavailable (the URL did not answer as an MCP server; nothing kept — check the endpoint or retry later), 422 invalid_url (not an https URL on a public host), 400 invalid_request (names the valid authType / credentialScope values or the 25-server ceiling). Tell the user the upstream URL becomes public listing data if a kit binding this server publishes publicly. Rate: 20 registers/hour per account. Requires the manageConnections scope." +
     NEW_SCOPE_NOTE,
   auth: "manager",
   method: "post",
