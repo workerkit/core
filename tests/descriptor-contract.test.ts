@@ -247,13 +247,22 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
 
   it("worker_run carries a decision worker's overrides on the same run route", async () => {
     const c = await run(d("worker_run"), {
-      tokenId: 7, preview: true, sourceArgs: { status: "open" }, maxItems: 20, waitSeconds: 30,
+      tokenId: 7, preview: true, sourceArgs: { status: "open", after: "-14d" },
+      answers: { "target-name": "Acme Corp" }, maxItems: 20, waitSeconds: 30,
     });
     expect(c.method).toBe("post");
     expect(c.path).toBe("/api/manage/workers/7/run");
     expect(c.opts.body).toEqual({
       prompt: undefined, modelSlug: undefined,
-      preview: true, sourceArgs: { status: "open" }, maxItems: 20, waitSeconds: 30,
+      preview: true, sourceArgs: { status: "open", after: "-14d" },
+      answers: { "target-name": "Acme Corp" }, maxItems: 20, waitSeconds: 30,
+    });
+    // The per-run answers must survive JSON.stringify as their own key: a
+    // decision run minted without them silently falls back to the worker's
+    // stored setup, which is the bug this pins shut.
+    expect(wireBody(c.opts.body)).toEqual({
+      preview: true, sourceArgs: { status: "open", after: "-14d" },
+      answers: { "target-name": "Acme Corp" }, maxItems: 20, waitSeconds: 30,
     });
   });
 

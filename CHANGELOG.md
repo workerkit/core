@@ -6,6 +6,38 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-09-18
+
+### Added
+
+- **`worker_run`** takes `answers` on a decision worker: values laid over the
+  worker's stored install answers for THIS run only, never saved. It is how
+  one caller names a searcher kit's target without touching the worker's
+  setup, so two callers sharing a worker never see each other's. The map is
+  validated against the kit's own form the way `instruction_set` validates it
+  and bound the way the run will bind it, so a row that cannot bind (a
+  category clashing with a built-in option, a ladder outside 2–10 levels) is a
+  400 naming it here rather than a run that fails later. A list question takes
+  a JSON array string or `;`-separated rows, and a question left unnamed keeps
+  its stored answer or the kit's default.
+
+### Changed
+
+- **`worker_run`**'s `sourceArgs` names relative window bounds, `after:
+  "-14d"` or `endDate: "+48h"`, which the platform resolves when the read
+  runs. That is the form to use for "the last N days" instead of computing a
+  date in the caller.
+- The `decision` block on **`run_get`** and a waited **`worker_run`** carries
+  `model`, the decision-model version that actually answered, worth citing
+  when behaviour changes, and `answersOverride`, the per-run answers the run
+  was minted with.
+- `findings[]` in that block is led by the source's own caveat when a read was
+  partial or withheld, a rate-limited mailbox or a firewall rule, so "nothing
+  found" is never trusted over a page that was never fully read.
+- **`instruction_set`**'s `answers` and **`kit_install`**'s `decisionAnswers`
+  take `;`-separated list rows as well as one per line, and say that clearing
+  a question falls back to its default where the kit ships one.
+
 ## [0.3.3] - 2026-09-18
 
 ### Added
