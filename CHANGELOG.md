@@ -6,6 +6,29 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-09-19
+
+### Changed
+
+- A decision run's `decisions[]` rows carry `item`: the fields the model judged,
+  as the kit's `state` names them (a subject, a sender, a preview), beside the
+  `answers` — the evidence a reader works from, with the `id` still there to
+  re-fetch the rest. `openQuestions[]` now lists every escalated item — a
+  rule's hit as well as a below-floor call — named by those fields rather than
+  by an id. Descriptor text only: no tool or field is added or removed.
+
+### Removed
+
+- **`worker_run.preview`** and **`deployment_update.decisionMode`** — Preview
+  mode is gone from the platform: every decision run is live and its routing
+  table's actions execute (owner's call, 2026-09-18: production always). The
+  server ignores a `preview` sent by an older client, so do not rely on it for
+  a dry run; `instruction_get` no longer reports a mode, the per-item rows say
+  `executed` / `ok` on every run, and the outcome line opens with "Judged" or
+  "Ranked" rather than a mode word. The descriptions that contrasted live with
+  preview no longer do: `kit_install_preview` and `worker_deploy` simply say
+  the table acts from the worker's first run.
+
 ## [0.3.4] - 2026-09-18
 
 ### Added

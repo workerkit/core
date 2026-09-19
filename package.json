@@ -1,6 +1,6 @@
 {
   "name": "@workerkit/core",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "API client and tool descriptors for WorkerKit: manage AI workers and browse the public kits directory",
   "type": "module",
   "license": "MIT",
