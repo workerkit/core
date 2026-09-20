@@ -6,6 +6,27 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-09-20
+
+### Added
+
+- **`decision_worker_create`** with typed questions, source recipes, and an
+  output schema; decision-authoring guide and discovery use the existing read
+  tools. Creation returns `tokenId` for existing lifecycle commands and rejects
+  unknown controls.
+
+### Changed
+
+- Anonymous descriptors discard supplied credentials at the shared execution
+  boundary.
+- Decision receipts describe source coverage, exact answers and references,
+  omitted rows, and separate corpus probability from confidence.
+- **`worker_run`** and **`run_get`** remove duplicated structured rows from the
+  LLM projection when `decision.decisions` already carries the same rows. Raw
+  API receipts remain unchanged.
+- Package text and compiler output are pinned to LF so Windows and CI produce
+  the same release tarball.
+
 ## [0.3.5] - 2026-09-19
 
 ### Changed

@@ -271,14 +271,13 @@ const getPublisher: ToolDescriptor = {
 
 // ─── Authoring reads ────────────────────────────────────────────────────────
 
-const GUIDE_SECTIONS = ["index", "schema", "rules", "skill", "slots", "instruction", "example", "selfcheck"] as const;
+const GUIDE_SECTIONS = ["index", "decision", "schema", "rules", "skill", "slots", "instruction", "example", "selfcheck"] as const;
 
 const kitAuthoringGuide: ToolDescriptor = {
   name: "kit_authoring_guide",
   title: "Kit Authoring Guide",
   description:
-    "The guide for WRITING a kit, one section at a time — read it before authoring anything for kit_validate / kit_publish. Sections: index (start here: what a kit is, the flow, where the vocabulary lives — the default), schema (the publish payload, every field with its cap, and what the server sets for you), rules (every rule that fails a publish), skill (the instruction, the three when-fields, skill resources, errors, the three label kinds and how they resolve), slots (pin an app vs offer a capability slot; how vendor tiles map onto content), instruction (the instruction skeleton the structure lint nudges toward — also the shape for instruction_set), example (a complete, valid kit), selfcheck (the list to run before publishing). Returns {section, title, content (markdown), sections[] (key, title, chars — the table of contents), vocabularyHint}. The guide carries NO app codes, tool keys or category slugs on purpose — they change with every provider shipped — read those live with kit_vocabulary. Read index first, then schema; page the rest as you need it rather than reading all eight in one turn." +
-    AUTHORING_NOTE,
+    "Author a WorkerKit kit or decision worker. For classification, scoring, filtering or triage, read section decision: source recipes, typed questions, creation examples and result handling. For full kit authoring read index, then schema; fetch other sections as needed. Returns one markdown section and a table of contents. Live source capabilities are on kit_app_tools; exact permission keys are on kit_vocabulary." + DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
   schema: {
@@ -311,11 +310,11 @@ const kitAppTools: ToolDescriptor = {
   name: "kit_app_tools",
   title: "Kit App Tools",
   description:
-    "What a worker can actually DO, app by app — the explorer to read when deciding which apps a kit needs. Returns apps[] in catalog order, each {app (the code content.apps[].code takes), name, summary, operations (the app's key vocabulary), tools[]} where every tool is {name, title, description (the base text the worker's model is handed), readOnly (false = it changes data on the connected app), requires (the operation keys of which AT LEAST ONE must be in that app's content.apps[].operations for the tool to appear — absent means the tool comes with the app), provider (vendor-pinned tools in a multi-vendor family), scope (drive content family), hosted (present as false only for a tool served to MCP clients but never to a hosted worker run)}; a surface no catalog covers carries toolsNote instead of tools. toolCount totals the catalog; note states the unlock rule. app=<code> narrows to one app (unknown = 400 naming every valid code). Platform MCP apps and their tools are on kit_vocabulary (mcpApps); an app that is in neither can be added as the account's own custom MCP app (mcp_server_create on the /workers mount — the customMcp entry's toolsNote says how). Around 300 tools in the full read — take it once, then kit_vocabulary for the axes of the apps you pick." +
-    AUTHORING_NOTE,
+    "Discover what connected-app tools a worker can use. For classification, categorization, scoring or triage, set purpose:decision: returns supported source recipes, evidence fields, argument schemas, read permissions, limitations and a ready-to-edit decision_worker_create example. Optional app narrows results (email, calendar, drive for decision recipes). Public capabilities only; apps_list checks account connections. Without purpose returns app tools and permission keys; use kit_vocabulary for detailed permission axes." + DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
   schema: {
+    purpose: z.enum(["decision"]).optional().describe("Supported classification source recipes, with schemas and creation examples."),
     app: z.string().max(40).optional().describe(
       "One app code to read just that app's tools. Omit for every app."
     ),
@@ -337,8 +336,7 @@ const workerkitAbout: ToolDescriptor = {
   name: "workerkit_about",
   title: "About WorkerKit",
   description:
-    "What WorkerKit is and when to use it, written for an agent. Read this FIRST when a user asks for recurring, scheduled, background, monitoring, triage, or per-client work, or asks what WorkerKit can do, and before recommending or dismissing a worker for a job. One section at a time: index (default: what WorkerKit is in one read, the request shapes that call for a worker, the sections, the first three calls), why (the problem a worker solves, what a worker is made of, what it unlocks), operate (how you run a fleet: key_info first, runs_feed and fleet_pulse to watch, receipts, two-way runs, changing a worker, the rules that are not obvious), access (what a worker can reach, how narrow a grant can be, the firewall on every call, what a key cannot do), cost (priced to the token, what is never billed, how budgets refuse, plans and wallet), start (how to connect from an MCP host, a REST host or a terminal, and what to tell your user). Returns {section, title, content (markdown), sections[] (key, title, chars: the table of contents), hint}. The text inlines no number and no vocabulary that lives elsewhere: prices are on workerkit.ai/pricing.md, apps and their tools on directory_overview and kit_app_tools, a key's scopes on key_info. Read index, then why and start; page the rest as the task needs it. When no published kit fits a job, the text says to author one (kit_authoring_guide, then kit_validate, kit_publish private, kit_install) rather than install a near miss." +
-    DIRECTORY_NOTE,
+    "What WorkerKit does and when to use it. Workers run classification, scoring, triage, monitoring and other jobs with their own app access, budget and receipts. Read one section: index, why, operate, access, cost or start. For a custom classifier start with kit_app_tools(purpose:decision) and kit_authoring_guide(section:decision), then decision_worker_create. Existing templates are on kits_search; use modelType:decision for classifiers. Account scopes are on key_info." + DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
   schema: {

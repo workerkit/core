@@ -11,7 +11,7 @@ import {
   type ToolDescriptor,
 } from "../src/index.js";
 
-// The wire contract, pinned per descriptor: for all 88 tools, executeTool
+// The wire contract, pinned per descriptor: for all 89 tools, executeTool
 // against a recording fake client must produce exactly the {method, path,
 // query/opts, body} the live server produces today. Expected values are
 // derived from the server suite's manage-tools/directory tests so the two
@@ -68,12 +68,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 79 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
-    expect(manageDescriptors).toHaveLength(79);
+  it("ships exactly 80 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
+    expect(manageDescriptors).toHaveLength(80);
     expect(directoryDescriptors).toHaveLength(9);
-    expect(allDescriptors).toHaveLength(88);
+    expect(allDescriptors).toHaveLength(89);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(88);
+    expect(new Set(names).size).toBe(89);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -82,13 +82,14 @@ describe("registry", () => {
     for (const descriptor of directoryDescriptors) expect(descriptor.auth).toBe("anonymous");
   });
 
-  it("pins {auth, method} for every one of the 88 descriptors", () => {
+  it("pins {auth, method} for every one of the 89 descriptors", () => {
     // The full name → auth/method table. A new/renamed tool or a changed verb
     // must show up here explicitly — no descriptor ships with an unpinned method.
     expect(
       allDescriptors.map((x) => `${x.name} ${x.auth} ${x.method}`).sort()
     ).toEqual(
       [
+        "decision_worker_create manager post",
         "key_info manager get",
         "workers_list manager get",
         "worker_get manager get",
@@ -1004,6 +1005,12 @@ describe("anonymous wire contract (mirrors the server directory-tools suite)", (
   it("passes no token through executeTool when none is given", async () => {
     for (const descriptor of directoryDescriptors) {
       const c = await run(descriptor, { slug: "a" });
+      expect(c.opts.token, descriptor.name).toBeUndefined();
+    }
+  });
+  it("drops a manager credential supplied to any public discovery descriptor", async () => {
+    for (const descriptor of directoryDescriptors) {
+      const c = await run(descriptor, { slug: "a" }, "pe_mgr_must_not_leak");
       expect(c.opts.token, descriptor.name).toBeUndefined();
     }
   });

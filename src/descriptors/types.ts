@@ -44,6 +44,10 @@ export interface ToolDescriptor {
   method: HttpMethod;
   /** Single source for the MCP inputSchema AND future CLI flags. */
   schema: z.ZodRawShape;
+  /** Reject unknown top-level inputs instead of silently dropping unsupported controls. */
+  strictInput?: boolean;
+  /** Structured success result. MCP adapters retain a serialized text fallback. */
+  outputSchema?: z.ZodRawShape;
   /** Upstream path, or a builder over the validated params. */
   path: string | ((params: Record<string, unknown>) => string);
   /**
