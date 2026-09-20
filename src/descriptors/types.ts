@@ -60,6 +60,8 @@ export interface ToolDescriptor {
    * params object is the body. DELETE requests never send a body either way.
    */
   bodyBuilder?: (params: Record<string, unknown>) => unknown;
+  /** Headers derived from typed inputs, e.g. a checkout idempotency key. */
+  headerBuilder?: (params: Record<string, unknown>) => Record<string, string>;
   /** Mutations: message served on an empty (204) success body. */
   successMessage?: string;
   annotations: ToolAnnotations;

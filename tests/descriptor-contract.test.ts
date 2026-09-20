@@ -68,12 +68,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 80 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
-    expect(manageDescriptors).toHaveLength(80);
+  it("ships exactly 84 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
+    expect(manageDescriptors).toHaveLength(84);
     expect(directoryDescriptors).toHaveLength(9);
-    expect(allDescriptors).toHaveLength(89);
+    expect(allDescriptors).toHaveLength(93);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(89);
+    expect(new Set(names).size).toBe(93);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -82,7 +82,7 @@ describe("registry", () => {
     for (const descriptor of directoryDescriptors) expect(descriptor.auth).toBe("anonymous");
   });
 
-  it("pins {auth, method} for every one of the 89 descriptors", () => {
+  it("pins {auth, method} for every one of the 93 descriptors", () => {
     // The full name → auth/method table. A new/renamed tool or a changed verb
     // must show up here explicitly — no descriptor ships with an unpinned method.
     expect(
@@ -90,6 +90,10 @@ describe("registry", () => {
     ).toEqual(
       [
         "decision_worker_create manager post",
+        "onboarding_get manager get",
+        "wallet_get manager get",
+        "wallet_checkout_create manager post",
+        "wallet_checkout_get manager get",
         "key_info manager get",
         "workers_list manager get",
         "worker_get manager get",

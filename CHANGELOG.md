@@ -6,6 +6,20 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-09-20
+
+### Added
+
+- **`onboarding_get`**, **`wallet_get`**, **`wallet_checkout_create`**, and
+  **`wallet_checkout_get`**.
+- Checkout uses a required idempotency header and explicit human payment
+  confirmation.
+
+### Changed
+
+- Descriptors can provide operation-specific headers; computed client headers,
+  including authentication, retain precedence.
+
 ## [0.3.6] - 2026-09-20
 
 ### Added

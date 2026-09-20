@@ -23,11 +23,13 @@ export async function executeTool(
     typeof descriptor.path === "function" ? descriptor.path(params) : descriptor.path;
   // Discovery stays anonymous even when a caller shares its authenticated client context.
   const token = descriptor.auth === "manager" ? opts.token : undefined;
+  const extra = descriptor.headerBuilder ? { headers: descriptor.headerBuilder(params) } : {};
 
   if (descriptor.method === "get") {
     // Strip path params from query params
     const queryParams = descriptor.paramFilter ? descriptor.paramFilter(params) : { ...params };
     return client.get(resolvedPath, {
+      ...extra,
       token,
       params: queryParams,
       signal: opts.signal,
@@ -36,6 +38,7 @@ export async function executeTool(
 
   const body = descriptor.bodyBuilder ? descriptor.bodyBuilder(params) : params;
   return client[descriptor.method](resolvedPath, {
+    ...extra,
     token,
     body: descriptor.method !== "delete" ? body : undefined,
     signal: opts.signal,
