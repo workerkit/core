@@ -1,5 +1,7 @@
 import { Agent, request as undiciRequest } from "undici";
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
+import { scrubSecrets } from "./redact.js";
 
 /**
  * Minimal structured-logging surface the client emits into. Matches pino's
@@ -42,9 +44,8 @@ export interface RequestOpts {
   body?: unknown;
   signal?: AbortSignal;
   /**
-   * Extra request headers. Every computed header (Authorization, X-Request-Id,
-   * User-Agent, Accept, Content-Type) is assigned AFTER this spread and wins,
-   * so these can never override one.
+   * Extra request headers, such as Idempotency-Key. Authentication, routing and
+   * computed headers are reserved, regardless of casing. Use token for authentication.
    */
   headers?: Record<string, string>;
 }
@@ -98,6 +99,22 @@ const BACKOFF_MS = [200, 500]; // between attempts 1→2 and 2→3
 // Ceiling on any Retry-After honoured below. Dormant today: no RETRYABLE_STATUS carries
 // one, so quota.retryAfter is always null there. Read the 429 note above before changing.
 const MAX_BACKOFF_MS = 2_000;
+const RESERVED_HEADERS = new Set([
+  "authorization", "proxy-authorization", "host", "x-request-id",
+  "user-agent", "accept", "content-type", "content-length", "transfer-encoding",
+]);
+
+function positiveInteger(value: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > 2_147_483_647) {
+    throw new RangeError(`${name} must be a positive integer no greater than 2147483647`);
+  }
+  return value;
+}
+
+function logPath(path: string, token?: string): string {
+  const pathname = path.split(/[?#]/, 1)[0] ?? "/";
+  return scrubSecrets(token ? pathname.split(token).join("[REDACTED]") : pathname);
+}
 
 const NOOP_LOGGER: ClientLogger = {
   info() {
@@ -122,10 +139,14 @@ export class PortEdenClient {
   private requestIdProvider: (() => string | undefined) | undefined;
 
   constructor(options: ClientOptions) {
-    this.baseUrl = options.baseUrl;
-    this.baseOrigin = new URL(options.baseUrl).origin;
-    this.timeoutMs = options.timeoutMs ?? 30_000;
-    this.maxResponseBodyBytes = options.maxResponseBodyBytes ?? 10 * 1024 * 1024;
+    const base = new URL(options.baseUrl);
+    if (!["http:", "https:"].includes(base.protocol) || base.username || base.password) {
+      throw new Error("baseUrl must be an HTTP(S) URL without embedded credentials");
+    }
+    this.baseUrl = base.toString();
+    this.baseOrigin = base.origin;
+    this.timeoutMs = positiveInteger(options.timeoutMs ?? 30_000, "timeoutMs");
+    this.maxResponseBodyBytes = positiveInteger(options.maxResponseBodyBytes ?? 10 * 1024 * 1024, "maxResponseBodyBytes");
     this.userAgent = options.userAgent;
     this.logger = options.logger ?? NOOP_LOGGER;
     this.requestIdProvider = options.requestIdProvider;
@@ -133,7 +154,7 @@ export class PortEdenClient {
       keepAliveTimeout: 30_000,
       keepAliveMaxTimeout: 60_000,
       pipelining: 1,
-      connections: options.maxConnections ?? 16,
+      connections: positiveInteger(options.maxConnections ?? 16, "maxConnections"),
       connect: { rejectUnauthorized: true },
       // Defence in depth: the per-attempt AbortSignal below already bounds each
       // call, but undici's own limits default to ~300s — pin them to the same
@@ -165,7 +186,7 @@ export class PortEdenClient {
 
   private requestTimeout(opts: RequestOpts): number {
     return opts.timeoutMs !== undefined && Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0
-      ? Math.min(300_000, opts.timeoutMs) : this.timeoutMs;
+      ? Math.max(1, Math.floor(Math.min(300_000, opts.timeoutMs))) : this.timeoutMs;
   }
 
   private async doRequest<T>(
@@ -190,6 +211,7 @@ export class PortEdenClient {
           data: null as T,
           quota: { limit: null, used: null, remaining: null, retryAfter: null },
           requestId: randomUUID(),
+          retryable: false,
         };
       }
 
@@ -214,7 +236,7 @@ export class PortEdenClient {
         this.logger.info({
           msg: "api_retry_budget_exhausted",
           method,
-          path,
+          path: logPath(path, opts.token),
           status: result.status,
           attempt,
           requestId: result.requestId,
@@ -225,14 +247,18 @@ export class PortEdenClient {
       this.logger.info({
         msg: "api_retry",
         method,
-        path,
+        path: logPath(path, opts.token),
         status: result.status,
         attempt,
         nextDelayMs: delayMs,
         requestId: result.requestId,
       });
 
-      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+      try {
+        await delay(delayMs, undefined, { signal: opts.signal });
+      } catch {
+        // The next iteration returns the caller-cancel result without another attempt.
+      }
     }
     return result!;
   }
@@ -254,7 +280,7 @@ export class PortEdenClient {
     const start = performance.now();
 
     const headers: Record<string, string> = {
-      ...opts.headers,
+      ...Object.fromEntries(Object.entries(opts.headers ?? {}).filter(([name]) => !RESERVED_HEADERS.has(name.toLowerCase()))),
       "X-Request-Id": requestId,
       Accept: "application/json",
     };
@@ -287,7 +313,7 @@ export class PortEdenClient {
     // deployment configured with a shorter timeout.
     const remainingMs = totalDeadlineAt - performance.now();
     const timeoutSignal = AbortSignal.timeout(
-      Math.min(this.requestTimeout(opts), Math.max(1_000, remainingMs))
+      Math.floor(Math.min(this.requestTimeout(opts), Math.max(1_000, remainingMs)))
     );
     const signal = opts.signal
       ? AbortSignal.any([opts.signal, timeoutSignal])
@@ -328,7 +354,7 @@ export class PortEdenClient {
       this.logger[logAtWarn ? "warn" : "info"]({
         msg: "api_call",
         method,
-        path,
+        path: logPath(path, opts.token),
         status,
         elapsed,
         requestId,
@@ -353,11 +379,12 @@ export class PortEdenClient {
       this.logger.error({
         msg: "api_error",
         method,
-        path,
+        path: logPath(path, opts.token),
         elapsed,
         requestId,
         attempt,
-        error: err instanceof Error ? err.message : String(err),
+        // Validation errors can contain header values. Never log exception messages.
+        error: tooLarge ? "response_too_large" : callerAborted ? "canceled" : timedOut ? "timeout" : "request_failed",
         callerAborted,
         timedOut,
         isTransport,
@@ -372,7 +399,7 @@ export class PortEdenClient {
         // An oversized response reports status 0 like a transport error, but re-requesting it is
         // guaranteed to fail the same way — mark it so the retry loop doesn't spend two more
         // attempts (and both backoffs) proving that.
-        ...(tooLarge ? { retryable: false } : {}),
+        ...(tooLarge || callerAborted ? { retryable: false } : {}),
       };
     }
   }
@@ -383,11 +410,11 @@ export class PortEdenClient {
     // against future bugs (typo, unencoded user input flowing into path) that could
     // pivot the proxy into making requests to an attacker-controlled host.
     if (!path.startsWith("/")) {
-      throw new Error(`Invalid upstream path: must start with '/' (got ${path.slice(0, 64)})`);
+      throw new Error("Invalid upstream path: must start with '/'");
     }
     const url = new URL(path, this.baseUrl);
-    if (url.origin !== this.baseOrigin) {
-      throw new Error(`Upstream origin mismatch: ${url.origin} != ${this.baseOrigin}`);
+    if (url.origin !== this.baseOrigin || url.username || url.password) {
+      throw new Error("Upstream path must stay on the configured origin without embedded credentials");
     }
     if (params) {
       for (const [key, value] of Object.entries(params)) {

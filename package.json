@@ -37,16 +37,21 @@
   "sideEffects": false,
   "files": [
     "dist",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "docs/hybrid-workers.md"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "node -e \"require('node:fs').rmSync('dist', {recursive:true, force:true})\" && tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run check:release && npm run typecheck && npm run build && npm test",
+    "check:release": "node scripts/check-release.mjs",
+    "test:package": "node scripts/test-package.mjs",
+    "prepack": "npm run build"
   },
   "engines": {
     "node": ">=22.0.0"

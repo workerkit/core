@@ -3,3 +3,5 @@ dist/
 *.log
 .env
 .env.*
+*.tgz
+release-notes.md

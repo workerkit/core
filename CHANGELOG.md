@@ -1,7 +1,3 @@
-## 0.3.8 (unreleased)
-
-Adds worker_decision_set with strict classifier, answer and revision inputs. Hybrid instruction and receipt contracts preserve classification, agent evidence, separate usage and actual wallet charges. Explicit worker_run waits use a bounded per-request timeout; POST requests remain non-retryable.
-
 # Changelog
 
 All notable changes to `@workerkit/core` are documented here.
@@ -9,6 +5,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.3.8] - 2026-09-28
+
+### Added
+
+Adds worker_decision_set with strict classifier, answer and revision inputs. Hybrid instruction and receipt contracts preserve classification, agent evidence, separate usage and actual wallet charges. Explicit worker_run waits use a bounded per-request timeout; POST requests remain non-retryable.
+
+### Fixed
+
+- Reserve authentication and computed headers regardless of casing; keep anonymous discovery free of bearer credentials.
+- Exclude credentials and query strings from request logs; cancel active requests and retry waits promptly.
+- Validate client resource limits and reject credential-bearing base URLs.
+
+### Changed
+
+- Build clean package contents and validate versions, release notes, installed packages and release tags before publication.
+- Publish npm packages with provenance and attach the package to a matching GitHub Release.
 
 ## [0.3.7] - 2026-09-20
 

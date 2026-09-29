@@ -8,7 +8,7 @@
 The shareable [WorkerKit](https://workerkit.ai) surface: an HTTP API client, the
 declarative tool-descriptor registry (85 authenticated fleet-management tools +
 9 anonymous kits-directory tools), and the single wire-execution path that turns
-a descriptor plus parameters into exactly one upstream request.
+a descriptor plus parameters into one HTTP operation.
 
 Deliberately MCP-free: descriptors carry MCP-shaped annotations and zod schemas,
 but nothing here depends on an MCP SDK, so an MCP server, a CLI, or docs tooling
@@ -46,7 +46,7 @@ if (isSuccess(result)) {
 
 // Authenticated: list your worker fleet with a manager key.
 const list = byName("workers_list")!;
-const fleet = await executeTool(client, list, {}, { token: process.env.WORKERKIT_MANAGER_KEY });
+const fleet = await executeTool(client, list, {}, { token: process.env.WK_MANAGER_KEY });
 
 await client.close();
 ```
@@ -60,6 +60,13 @@ The client ships sensible production defaults: per-attempt timeouts under a
 whole-call deadline, bounded retries for idempotent methods only, a streamed
 response-size cap, and quota/rate-limit header extraction. `scrubSecrets` helps
 keep credentials out of logs.
+
+## Classification followed by an agent task
+
+A hybrid worker classifies a bounded source window and runs one language-model agent
+on the selected batch. Core exposes the configuration and a single run receipt;
+model execution, permissions and billing remain server responsibilities. See the
+[hybrid worker guide](https://github.com/workerkit/core/blob/main/docs/hybrid-workers.md).
 
 ## Development
 
