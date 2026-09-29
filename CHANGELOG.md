@@ -1,3 +1,7 @@
+## 0.3.8 (unreleased)
+
+Adds worker_decision_set with strict classifier, answer and revision inputs. Hybrid instruction and receipt contracts preserve classification, agent evidence, separate usage and actual wallet charges. Explicit worker_run waits use a bounded per-request timeout; POST requests remain non-retryable.
+
 # Changelog
 
 All notable changes to `@workerkit/core` are documented here.

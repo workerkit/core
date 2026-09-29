@@ -34,6 +34,8 @@ export interface ClientOptions {
 }
 
 export interface RequestOpts {
+  /** Override only this request, e.g. an explicit run wait. POST is still never retried. */
+  timeoutMs?: number;
   /** Bearer forwarded upstream. Omit for anonymous endpoints. */
   token?: string;
   params?: Record<string, unknown>;
@@ -161,6 +163,11 @@ export class PortEdenClient {
     return this.doRequest<T>("DELETE", path, opts);
   }
 
+  private requestTimeout(opts: RequestOpts): number {
+    return opts.timeoutMs !== undefined && Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0
+      ? Math.min(300_000, opts.timeoutMs) : this.timeoutMs;
+  }
+
   private async doRequest<T>(
     method: string,
     path: string,
@@ -173,7 +180,7 @@ export class PortEdenClient {
     // worst case against a slow-then-failing upstream is ~3 x timeoutMs plus
     // backoff, holding a concurrency slot for ~90s. Two timeout budgets is
     // enough for one slow attempt plus a meaningful retry.
-    const totalDeadlineAt = performance.now() + this.timeoutMs * 2;
+    const totalDeadlineAt = performance.now() + this.requestTimeout(opts) * 2;
 
     let result: ApiResult<T> | undefined;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -280,7 +287,7 @@ export class PortEdenClient {
     // deployment configured with a shorter timeout.
     const remainingMs = totalDeadlineAt - performance.now();
     const timeoutSignal = AbortSignal.timeout(
-      Math.min(this.timeoutMs, Math.max(1_000, remainingMs))
+      Math.min(this.requestTimeout(opts), Math.max(1_000, remainingMs))
     );
     const signal = opts.signal
       ? AbortSignal.any([opts.signal, timeoutSignal])
@@ -293,6 +300,8 @@ export class PortEdenClient {
         body: hasBody ? JSON.stringify(opts.body) : undefined,
         signal,
         dispatcher: this.agent,
+        headersTimeout: this.requestTimeout(opts),
+        bodyTimeout: this.requestTimeout(opts),
       });
 
       const status = response.statusCode;

@@ -68,12 +68,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 84 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
-    expect(manageDescriptors).toHaveLength(84);
+  it("ships exactly 85 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
+    expect(manageDescriptors).toHaveLength(85);
     expect(directoryDescriptors).toHaveLength(9);
-    expect(allDescriptors).toHaveLength(93);
+    expect(allDescriptors).toHaveLength(94);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(93);
+    expect(new Set(names).size).toBe(94);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -82,7 +82,7 @@ describe("registry", () => {
     for (const descriptor of directoryDescriptors) expect(descriptor.auth).toBe("anonymous");
   });
 
-  it("pins {auth, method} for every one of the 93 descriptors", () => {
+  it("pins {auth, method} for every one of the 94 descriptors", () => {
     // The full name → auth/method table. A new/renamed tool or a changed verb
     // must show up here explicitly — no descriptor ships with an unpinned method.
     expect(
@@ -128,6 +128,7 @@ describe("registry", () => {
         "delivery_delete manager delete",
         "instruction_get manager get",
         "instruction_set manager put",
+        "worker_decision_set manager put",
         "instruction_versions manager get",
         "instruction_version_get manager get",
         "instruction_restore manager post",
@@ -1073,5 +1074,41 @@ describe("pure presentation transforms (mapData / footer)", () => {
     const footer = descriptor.footer!(mapped, { slug: "porteden" });
     expect(footer).toContain("currently lists no kits");
     expect(footer).not.toContain("No kits matched.");
+  });
+});
+
+
+describe("classifier and agent contracts", () => {
+  it("replaces the classifier with explicit answers and revision in one scoped PUT", async () => {
+    const descriptor = d("worker_decision_set");
+    const schema = z.object(descriptor.schema).strict();
+    const params = schema.parse({ tokenId: 12, decisionSpec: { schemaVersion: 3, agentAction: { maxItems: 5 } },
+      answers: {}, updatedAt: "2026-09-22T14:00:00.123456Z" });
+    const call = await run(descriptor, params, "manager");
+    expect(call.method).toBe("put");
+    expect(call.path).toBe("/api/manage/workers/12/decision");
+    expect(call.opts.body).toEqual({ decisionSpec: params.decisionSpec, answers: {}, updatedAt: params.updatedAt });
+    expect(call.opts.token).toBe("manager");
+    expect(descriptor.strictInput).toBe(true);
+    expect(() => schema.parse({ ...params, grants: ["email_send"] })).toThrow();
+    expect(() => schema.parse({ tokenId: 12, decisionSpec: null })).toThrow();
+    const removal = await run(descriptor, { tokenId: 12, decisionSpec: null, updatedAt: params.updatedAt });
+    expect(removal.opts.body).toEqual({ decisionSpec: null, answers: undefined, updatedAt: params.updatedAt });
+  });
+
+  it("forwards classification overrides and language instructions together", async () => {
+    const descriptor = d("worker_run");
+    const params = z.object(descriptor.schema).parse({ tokenId: 12, sourceArgs: { query: "unread" },
+      answers: { category: "support" }, maxItems: 20, prompt: "Draft replies", modelSlug: "chosen-model", waitSeconds: 55 });
+    const call = await run(descriptor, params);
+    expect(call.opts.body).toEqual({ sourceArgs: params.sourceArgs, answers: params.answers, maxItems: 20,
+      prompt: "Draft replies", modelSlug: "chosen-model", waitSeconds: 55 });
+    expect(call.opts).toMatchObject({ timeoutMs: 60000 });
+    expect(descriptor.annotations.openWorldHint).toBe(true);
+  });
+
+  it("accepts hybrid directory filtering and preserves both instruction sections", async () => {
+    expect(z.object(d("kits_search").schema).parse({ modelType: "hybrid" })).toMatchObject({ modelType: "hybrid" });
+    expect(d("instruction_get").description).toContain("{modelType, instruction, decision}");
   });
 });

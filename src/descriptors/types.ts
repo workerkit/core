@@ -42,6 +42,8 @@ export interface ToolDescriptor {
   /** "manager" tools require a bearer; "anonymous" tools must never forward one. */
   auth: "manager" | "anonymous";
   method: HttpMethod;
+  /** Explicit long waits may need a larger per-request transport timeout. */
+  requestTimeoutMs?: (params: Record<string, unknown>) => number | undefined;
   /** Single source for the MCP inputSchema AND future CLI flags. */
   schema: z.ZodRawShape;
   /** Reject unknown top-level inputs instead of silently dropping unsupported controls. */
