@@ -6,7 +6,7 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
 
 concurrency:
@@ -55,7 +55,3 @@ jobs:
             release-notes.md
       - name: Publish reviewed package to npm
         run: npm publish "$RELEASE_PACKAGE" --provenance --access public
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" "$RELEASE_PACKAGE" --title "$GITHUB_REF_NAME" --notes-file release-notes.md --latest --verify-tag

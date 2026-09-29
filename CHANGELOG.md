@@ -6,7 +6,7 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.3.8] - 2026-09-28
+## [0.3.8] - 2026-09-29
 
 ### Added
 
@@ -17,6 +17,7 @@ Adds worker_decision_set with strict classifier, answer and revision inputs. Hyb
 - Reserve authentication and computed headers regardless of casing; keep anonymous discovery free of bearer credentials.
 - Exclude credentials and query strings from request logs; cancel active requests and retry waits promptly.
 - Validate client resource limits and reject credential-bearing base URLs.
+- Update Undici to the patched 7.29.1 release.
 
 ### Changed
 
