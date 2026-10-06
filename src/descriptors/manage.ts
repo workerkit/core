@@ -1,4 +1,4 @@
-// The 79 authenticated fleet-management tools, as pure descriptors. The
+// The 85 authenticated fleet-management tools, as pure descriptors. The
 // descriptions ARE the product surface: they are served verbatim to MCP
 // clients (and any future CLI help), so every contract nuance an agent must
 // not get wrong is taught here.
@@ -1008,11 +1008,34 @@ const KIT_SLUG_HINT =
 // process. No real slug can contain a dot, so nothing legitimate is refused.
 const KIT_SLUG = z.string().min(1).max(120).regex(/^[a-z0-9][a-z0-9-]*$/, "not a valid kit slug");
 
+// The backend's GitHub selection rules, checked before the request: up to 20 distinct
+// accounts, each granting every repository ("all") or 1-500 distinct repository IDs
+// ("selected"). An empty account list is a deliberate choice and is sent as-is.
+const GITHUB_ACCOUNT_SELECTION = z.object({
+  connectionId: z.number().int().positive(),
+  repositoryMode: z.enum(["all", "selected"]),
+  repositoryIds: z.array(z.number().int().positive()).max(500).default([]),
+}).superRefine((account, ctx) => {
+  if (account.repositoryMode === "selected" && account.repositoryIds.length === 0)
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["repositoryIds"], message: "Select at least one repository." });
+  if (account.repositoryMode === "all" && account.repositoryIds.length !== 0)
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["repositoryIds"], message: "All repositories mode must not include a repository list." });
+  if (new Set(account.repositoryIds).size !== account.repositoryIds.length)
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["repositoryIds"], message: "Repository IDs must be distinct." });
+});
+
+const GITHUB_SELECTION = z.object({
+  accounts: z.array(GITHUB_ACCOUNT_SELECTION).max(20),
+}).refine(
+  (selection) => new Set(selection.accounts.map((a) => a.connectionId)).size === selection.accounts.length,
+  "GitHub accounts must be distinct."
+);
+
 const kitInstallPreview: ToolDescriptor = {
   name: "kit_install_preview",
   title: "Preview Kit Install",
   description:
-    "The kit's install form plus this account's current ability to satisfy it — call this BEFORE kit_install and gather every answer it demands. Creates nothing. Requires the installKits scope (403 names it). Returns: requiredInputs (EVERY key is mandatory at install — collect a value for each from the human, keys are exact), memorySetup (questions whose answers become the worker's first memory; only required:true entries are mandatory), modelType, decisionSetup, decisionNarration (a 'decision' kit runs a routing table instead of an instruction, on no model you pick: decisionNarration is that table as sentences — brief the human from it; decisionSetup are its install questions, answered by key in kit_install's decisionAnswers — a required one with no default is mandatory, except an appPick, answerable later with instruction_set; the worker's table acts from its first run), categorySlots (pick ONE member per slot via categoryChoices; each member carries connection — prefer a connected one — and connectionProvider, which when set means also pass categoryChoices[].resourceId picked from operatorResources, ideally one with hasActiveConnection and a matching provider), apps + appsNeedingConnection (the connection state the new worker would START with; installing anyway is allowed — the worker starts blocked and a human finishes at connectAppsUrl), operator (which operator the install targets), limits (currentWorkers/maxWorkers — at the cap the install returns 402), kitPageUrl (the human install page). Preview is advisory: the install response's readiness block is the verdict. For the kit's full permissions manifest and instruction use kit_get on the public Directory server.",
+    "The kit's install form plus this account's current ability to satisfy it — call this BEFORE kit_install and gather every answer it demands. Creates nothing. Requires the installKits scope (403 names it). Returns: requiredInputs (EVERY key is mandatory at install — collect a value for each from the human, keys are exact), memorySetup (questions whose answers become the worker's first memory; only required:true entries are mandatory), modelType, decisionSetup, decisionNarration (a 'decision' kit runs a routing table instead of an instruction, on no model you pick: decisionNarration is that table as sentences — brief the human from it; decisionSetup are its install questions, answered by key in kit_install's decisionAnswers — a required one with no default is mandatory, except an appPick, answerable later with instruction_set; the worker's table acts from its first run), categorySlots (pick ONE member per slot via categoryChoices; each member carries connection — prefer a connected one — and connectionProvider, which when set means also pass categoryChoices[].resourceId picked from operatorResources, ideally one with hasActiveConnection and a matching provider), apps + appsNeedingConnection (the connection state the new worker would START with; installing anyway is allowed — the worker starts blocked and a human finishes at connectAppsUrl), githubAccounts (the operator's connected GitHub accounts; each id is a connectionId for kit_install's githubSelection), operator (which operator the install targets), limits (currentWorkers/maxWorkers — at the cap the install returns 402), kitPageUrl (the human install page). Preview is advisory: the install response's readiness block is the verdict. For the kit's full permissions manifest and instruction use kit_get on the public Directory server.",
   auth: "manager",
   method: "get",
   schema: {
@@ -1046,6 +1069,9 @@ const kitInstall: ToolDescriptor = {
     ),
     avatar: z.string().max(40).optional().describe(
       "Avatar slug for the new worker. Omit for the default."
+    ),
+    githubSelection: GITHUB_SELECTION.optional().describe(
+      "GitHub accounts to grant the new worker. connectionId is a githubAccounts[].id from kit_install_preview. repositoryMode 'all' covers every repository granted to that account, including ones granted later; 'selected' takes 1-500 repositoryIds. An empty accounts list leaves GitHub setup for later. Omit to grant the operator's only connected account with all repositories; several connected accounts are never selected implicitly."
     ),
     categoryChoices: z.array(z.object({
       categoryCode: z.string().describe("The slot's categoryCode from the preview."),
@@ -1083,6 +1109,7 @@ const kitInstall: ToolDescriptor = {
     operatorId: params.operatorId,
     title: params.title,
     avatar: params.avatar,
+    githubSelection: params.githubSelection,
     categoryChoices: params.categoryChoices,
     inputs: params.inputs,
     memoryAnswers: params.memoryAnswers,
@@ -1791,7 +1818,7 @@ const OPERATOR_ID_HINT =
   "The operator (workspace) to act for, as a GUID from apps_list → operators[]. Omit for the account's default operator — the one installs and clones land on. Account-level providers ignore it.";
 
 const PROVIDER_HINT =
-  "A recipe's provider code from apps_list → apps[].connect[].provider: telegram, discord, slack, twilio, sendgrid, resend, tavily, brave, exa, brightData, firecrawl, granola, krisp, gong, zendesk, shopify, hubspot, notion, linear, monday, jira, asana, confluence, or mcp:<slug> for an MCP app (a platform one, or one of your own from mcp_servers_list — published or not). Case-insensitive.";
+  "A recipe's provider code from apps_list → apps[].connect[].provider: telegram, discord, slack, twilio, sendgrid, resend, tavily, brave, exa, brightData, firecrawl, nimble, granola, krisp, gong, zendesk, shopify, hubspot, notion, linear, monday, jira, asana, confluence, or mcp:<slug> for an MCP app (a platform one, or one of your own from mcp_servers_list — published or not). Case-insensitive.";
 
 const listApps: ToolDescriptor = {
   name: "apps_list",

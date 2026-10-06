@@ -6,6 +6,17 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-10-06
+
+### Added
+
+- `kit_install` accepts `githubSelection`: the GitHub accounts a new worker may use, each with all of its repositories or 1-500 selected repository IDs. Selections are validated before the request, and an empty account list is sent as-is to leave GitHub setup for later. `kit_install_preview` lists the connected accounts in `githubAccounts`.
+
+### Changed
+
+- `onboarding_get` documents how the spend policy counts settled cost, BYOK fees and active reservations, when its daily and monthly windows reset, and how a refusal at the human-approved ceiling differs from the fleet budget.
+- `app_connect` and `app_disconnect` list `nimble` among the credential providers.
+
 ## [0.3.8] - 2026-09-29
 
 ### Added

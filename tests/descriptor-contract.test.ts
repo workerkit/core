@@ -11,7 +11,7 @@ import {
   type ToolDescriptor,
 } from "../src/index.js";
 
-// The wire contract, pinned per descriptor: for all 89 tools, executeTool
+// The wire contract, pinned per descriptor: for all 94 tools, executeTool
 // against a recording fake client must produce exactly the {method, path,
 // query/opts, body} the live server produces today. Expected values are
 // derived from the server suite's manage-tools/directory tests so the two
@@ -584,6 +584,24 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
       memoryAnswers: { tone: "formal" },
       decisionAnswers: { "urgent-label": "Needs Reply Today" },
     });
+  });
+
+  it("kit_install preserves explicit GitHub account and repository selections", async () => {
+    for (const accounts of [[], [{ connectionId: 7, repositoryMode: "selected", repositoryIds: [101, 102] }]]) {
+      const githubSelection = { accounts };
+      const c = await run(d("kit_install"), { slug: "github-triage", githubSelection });
+      expect(c.opts.body).toMatchObject({ githubSelection });
+    }
+  });
+
+  it.each([
+    { problem: "no repositories in selected mode", accounts: [{ connectionId: 7, repositoryMode: "selected", repositoryIds: [] }] },
+    { problem: "a repository list in all mode", accounts: [{ connectionId: 7, repositoryMode: "all", repositoryIds: [101] }] },
+    { problem: "a repeated repository", accounts: [{ connectionId: 7, repositoryMode: "selected", repositoryIds: [101, 101] }] },
+    { problem: "a repeated account", accounts: [7, 7].map((connectionId) => ({ connectionId, repositoryMode: "all", repositoryIds: [] })) },
+  ])("kit_install rejects a GitHub selection with $problem", ({ accounts }) => {
+    const schema = z.object(d("kit_install").schema);
+    expect(schema.safeParse({ slug: "github-triage", githubSelection: { accounts } }).success).toBe(false);
   });
 
   it("worker_clone_preview and worker_clone POST the same body to /clone/preview and /clone", async () => {
