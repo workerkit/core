@@ -1,8 +1,9 @@
-// The 85 authenticated fleet-management tools, as pure descriptors. The
+// The 88 authenticated fleet-management tools, as pure descriptors. The
 // descriptions ARE the product surface: they are served verbatim to MCP
 // clients (and any future CLI help), so every contract nuance an agent must
 // not get wrong is taught here.
 
+import { appDiscoveryDescriptors } from "./app-discovery.js";
 import { compactDecisionReceipt } from "./decision-receipt.js";
 import { createDecisionWorker } from "./decision-authoring.js";
 import { onboardingDescriptors } from "./onboarding.js";
@@ -1035,7 +1036,7 @@ const kitInstallPreview: ToolDescriptor = {
   name: "kit_install_preview",
   title: "Preview Kit Install",
   description:
-    "The kit's install form plus this account's current ability to satisfy it — call this BEFORE kit_install and gather every answer it demands. Creates nothing. Requires the installKits scope (403 names it). Returns: requiredInputs (EVERY key is mandatory at install — collect a value for each from the human, keys are exact), memorySetup (questions whose answers become the worker's first memory; only required:true entries are mandatory), modelType, decisionSetup, decisionNarration (a 'decision' kit runs a routing table instead of an instruction, on no model you pick: decisionNarration is that table as sentences — brief the human from it; decisionSetup are its install questions, answered by key in kit_install's decisionAnswers — a required one with no default is mandatory, except an appPick, answerable later with instruction_set; the worker's table acts from its first run), categorySlots (pick ONE member per slot via categoryChoices; each member carries connection — prefer a connected one — and connectionProvider, which when set means also pass categoryChoices[].resourceId picked from operatorResources, ideally one with hasActiveConnection and a matching provider), apps + appsNeedingConnection (the connection state the new worker would START with; installing anyway is allowed — the worker starts blocked and a human finishes at connectAppsUrl), githubAccounts (the operator's connected GitHub accounts; each id is a connectionId for kit_install's githubSelection), operator (which operator the install targets), limits (currentWorkers/maxWorkers — at the cap the install returns 402), kitPageUrl (the human install page). Preview is advisory: the install response's readiness block is the verdict. For the kit's full permissions manifest and instruction use kit_get on the public Directory server.",
+    "The kit's install form plus this account's current ability to satisfy it — call this BEFORE kit_install and gather every answer it demands. Creates nothing. Requires the installKits scope (403 names it). Returns: requiredInputs (EVERY key is mandatory at install — collect a value for each from the human, keys are exact), memorySetup (questions whose answers become the worker's first memory; only required:true entries are mandatory), modelType, decisionSetup, decisionNarration (a 'decision' kit runs a routing table instead of an instruction, on no model you pick: decisionNarration is that table as sentences — brief the human from it; decisionSetup are its install questions, answered by key in kit_install's decisionAnswers — a required one with no default is mandatory, except an appPick, answerable later with instruction_set; the worker's table acts from its first run), categorySlots (pick ONE member per slot via categoryChoices; each member carries connection — prefer a connected one — and connectionProvider, which when set means also pass categoryChoices[].resourceId picked from operatorResources, ideally one with hasActiveConnection and a matching provider), apps + appsNeedingConnection (the connection state the new worker would START with; installing anyway is allowed — the worker starts blocked and a human finishes at connectAppsUrl), githubAccounts (the operator's connected GitHub accounts; each id is a connectionId for kit_install's githubSelection), githubSetup (requiredScope, discovery tools and explicitSelectionRequired; discover repositories and branches before install, then send githubSelection with selected IDs or accounts:[] to defer setup), operator (which operator the install targets), limits (currentWorkers/maxWorkers — at the cap the install returns 402), kitPageUrl (the human install page). Preview is advisory: the install response's readiness block is the verdict. For the kit's full permissions manifest and instruction use kit_get on the public Directory server.",
   auth: "manager",
   method: "get",
   schema: {
@@ -1071,7 +1072,7 @@ const kitInstall: ToolDescriptor = {
       "Avatar slug for the new worker. Omit for the default."
     ),
     githubSelection: GITHUB_SELECTION.optional().describe(
-      "GitHub accounts to grant the new worker. connectionId is a githubAccounts[].id from kit_install_preview. repositoryMode 'all' covers every repository granted to that account, including ones granted later; 'selected' takes 1-500 repositoryIds. An empty accounts list leaves GitHub setup for later. Omit to grant the operator's only connected account with all repositories; several connected accounts are never selected implicitly."
+      "Explicit GitHub targets for the new worker. Discover them with app_github_accounts, app_github_repos and app_github_branches (discoverAppResources scope). connectionId also appears as githubAccounts[].id in kit_install_preview. Use repositoryMode 'selected' with 1-500 stable repositoryIds for a specific job. 'all' includes future repositories granted to that account: choose it only when intended. accounts:[] leaves setup for later. Required for a GitHub kit when the key has discoverAppResources; legacy keys retain the single-account fallback. Discovery and branch inputs do not grant extra access."
     ),
     categoryChoices: z.array(z.object({
       categoryCode: z.string().describe("The slot's categoryCode from the preview."),
@@ -2070,6 +2071,7 @@ const deleteMcpServer: ToolDescriptor = {
 // ─── Export ─────────────────────────────────────────────────────────────────
 
 export const manageDescriptors: readonly ToolDescriptor[] = [
+  ...appDiscoveryDescriptors,
   ...onboardingDescriptors,
   createDecisionWorker,
   setWorkerDecision,

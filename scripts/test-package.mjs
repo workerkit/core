@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import assert from "node:assert/strict";
@@ -23,13 +23,21 @@ try {
   }
   const consumer = join(temp, "consumer");
   mkdirSync(consumer);
+  // Anchor npm here even if the OS temp directory has an unrelated package.json.
+  writeFileSync(join(consumer, "package.json"), JSON.stringify({ name: "workerkit-package-smoke", version: "0.0.0", private: true }));
   const extra = pkg.name === "@workerkit/cli" && process.env.WK_CORE_TARBALL ? [resolve(process.env.WK_CORE_TARBALL)] : [];
   runNpm(["install", "--no-audit", "--no-fund", "--prefer-offline", "--omit=dev", "--package-lock=false", join(temp, pack.filename), ...extra], consumer);
   if (pkg.name === "@workerkit/core") {
     execFileSync(process.execPath, ["--input-type=module", "-e", `
       import assert from 'node:assert/strict';
+      import { createRequire } from 'node:module';
       import { WorkerKitClient, byName, allDescriptors } from '@workerkit/core';
+      const require = createRequire(import.meta.url);
+      assert.equal(require('@workerkit/core/package.json').version, ${JSON.stringify(pkg.version)});
       assert.ok(byName('worker_decision_set'));
+      assert.ok(byName('app_github_accounts'));
+      assert.ok(byName('app_github_repos'));
+      assert.ok(byName('app_github_branches'));
       assert.equal(new Set(allDescriptors.map(d => d.name)).size, allDescriptors.length);
       await new WorkerKitClient({ baseUrl: 'https://api.workerkit.ai' }).close();
     `], { cwd: consumer, stdio: "inherit" });

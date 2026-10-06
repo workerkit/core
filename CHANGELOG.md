@@ -6,6 +6,16 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-10-06
+
+### Added
+
+- GitHub setup discovery: `app_github_accounts`, `app_github_repos` and `app_github_branches` find connected accounts, repositories and branches before installation, under the explicit `discoverAppResources` scope. They return setup metadata only, never repository content or credentials.
+
+### Changed
+
+- `kit_install` documents that a GitHub kit needs an explicit `githubSelection` when the key has `discoverAppResources` (older keys keep the single-account fallback), and `kit_install_preview` describes the `githubSetup` block it returns.
+
 ## [0.3.9] - 2026-10-06
 
 ### Added

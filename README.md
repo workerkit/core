@@ -6,7 +6,7 @@
 [![license](https://img.shields.io/npm/l/%40workerkit%2Fcore.svg)](LICENSE)
 
 The shareable [WorkerKit](https://workerkit.ai) surface: an HTTP API client, the
-declarative tool-descriptor registry (85 authenticated fleet-management tools +
+declarative tool-descriptor registry (88 authenticated fleet-management tools +
 9 anonymous kits-directory tools), and the single wire-execution path that turns
 a descriptor plus parameters into one HTTP operation.
 
@@ -60,6 +60,26 @@ The client ships sensible production defaults: per-attempt timeouts under a
 whole-call deadline, bounded retries for idempotent methods only, a streamed
 response-size cap, and quota/rate-limit header extraction. `scrubSecrets` helps
 keep credentials out of logs.
+
+## Discover GitHub targets before installing
+
+`app_github_accounts`, `app_github_repos` and `app_github_branches` look up
+connected GitHub accounts and the repositories and branches their GitHub App
+installations grant, so a kit can be installed against exact targets without
+running a worker. They need the `discoverAppResources` scope, which existing
+keys gain only through explicit re-scoping, and return setup metadata only,
+never repository content or credentials. Accounts come from the workspace's
+saved connections, not from GitHub's user directory.
+
+Pass the workspace and connection explicitly. Repository and branch `q` filters
+apply to one provider page, so keep following `nextPage` even when a filtered
+page is empty. Put the returned repository IDs in `kit_install.githubSelection`
+with `repositoryMode: "selected"`; `"all"` also covers repositories granted to
+the connection later, and `accounts: []` defers GitHub setup. The `githubSetup`
+block in `kit_install_preview` names the required scope and says whether an
+explicit selection is mandatory. A branch given as a kit input configures the
+job but does not restrict the worker's access. Returned names come from GitHub,
+so treat them as untrusted data.
 
 ## Classification followed by an agent task
 

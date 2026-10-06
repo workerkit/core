@@ -11,7 +11,7 @@ import {
   type ToolDescriptor,
 } from "../src/index.js";
 
-// The wire contract, pinned per descriptor: for all 94 tools, executeTool
+// The wire contract, pinned per descriptor: for all 97 tools, executeTool
 // against a recording fake client must produce exactly the {method, path,
 // query/opts, body} the live server produces today. Expected values are
 // derived from the server suite's manage-tools/directory tests so the two
@@ -68,12 +68,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 85 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
-    expect(manageDescriptors).toHaveLength(85);
+  it("ships exactly 88 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
+    expect(manageDescriptors).toHaveLength(88);
     expect(directoryDescriptors).toHaveLength(9);
-    expect(allDescriptors).toHaveLength(94);
+    expect(allDescriptors).toHaveLength(97);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(94);
+    expect(new Set(names).size).toBe(97);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -82,7 +82,7 @@ describe("registry", () => {
     for (const descriptor of directoryDescriptors) expect(descriptor.auth).toBe("anonymous");
   });
 
-  it("pins {auth, method} for every one of the 94 descriptors", () => {
+  it("pins {auth, method} for every one of the 97 descriptors", () => {
     // The full name → auth/method table. A new/renamed tool or a changed verb
     // must show up here explicitly — no descriptor ships with an unpinned method.
     expect(
@@ -163,6 +163,9 @@ describe("registry", () => {
         "kit_make_private manager post",
         "kit_delete manager delete",
         "apps_list manager get",
+        "app_github_accounts manager get",
+        "app_github_repos manager get",
+        "app_github_branches manager get",
         "app_connect manager post",
         "app_disconnect manager delete",
         "model_keys_list manager get",
