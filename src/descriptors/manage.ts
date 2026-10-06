@@ -26,6 +26,9 @@ const TOKEN_ID_HINT =
 const RUN_ID_HINT =
   "The run's UUID, as returned by worker_run (runId), workers_list (currentRunId / lastRun.runId), or worker_runs.";
 
+const DECISION_PROFILE_HINT =
+  "Classifier choice: a profileId from models_list.decisionProfiles, independent of the language model. Platform-funded for decision and hybrid workers. Review sample results and confidence thresholds when changing providers. Omit to keep the configured classifier (Jev by default).";
+
 // The whole runs family shares this degradation mode; teach it once per tool so
 // agents never retry-loop a 422.
 const RUNTIME_NOTE =
@@ -146,6 +149,7 @@ const runWorker: ToolDescriptor = {
     prompt: z.string().max(8000).optional().describe(
       "Language and hybrid workers: what to do on THIS run (≤8000 chars). Omit to run the worker's standing instructions unchanged."
     ),
+    decisionProfileId: z.string().min(1).max(64).optional().describe(DECISION_PROFILE_HINT),
     modelSlug: z.string().max(64).optional().describe(
       "Language and hybrid workers: one-off model override for this run (≤64 chars). Omit to use the worker's configured model."
     ),
@@ -166,6 +170,7 @@ const runWorker: ToolDescriptor = {
   bodyBuilder: (params) => ({
     prompt: params.prompt,
     modelSlug: params.modelSlug,
+    decisionProfileId: params.decisionProfileId,
     sourceArgs: params.sourceArgs,
     answers: params.answers,
     maxItems: params.maxItems,
@@ -178,7 +183,7 @@ const runWorkersBulk: ToolDescriptor = {
   name: "run_bulk",
   title: "Run Workers in Bulk",
   description:
-    "Run several workers now in ONE call — a prompt fanned out across a fleet without spending the single trigger's 30/min budget one worker at a time. Up to 20 workers per call, each named by workerId (preferred) or its deprecated tokenId (the GUID wins when both are sent), each with its own optional prompt and modelSlug. IT IS NOT ATOMIC AND IT DOES NOT STOP: every worker passes the mint gauntlet on its own, so an unknown id, a missing deployment or a cap already hit is reported on THAT item (success false, errorCode, error) and the loop goes on to the next — a stale id in a fan-out never discards the nineteen runs that were fine. A SKIPPED RECEIPT IS A SUCCESS HERE: a run was minted and its status/skipReason say why it did not start, so read items[] and never the status code or minted alone. Each successful item carries runId, status, skipReason and errorCode; run_events and run_get take the runId from there. Recorded as API-triggered runs, attributed to the manager key's minter. Own window: 2 calls per minute and 20 per hour per ACCOUNT, on top of the surface windows. Requires the runWorkers scope." +
+    "Run several workers now in ONE call — a prompt fanned out across a fleet without spending the single trigger's 30/min budget one worker at a time. Up to 20 workers per call, each named by workerId (preferred) or its deprecated tokenId (the GUID wins when both are sent), each with its own optional prompt, modelSlug, decisionProfileId, sourceArgs, answers and maxItems. IT IS NOT ATOMIC AND IT DOES NOT STOP: every worker passes the mint gauntlet on its own, so an unknown id, a missing deployment or a cap already hit is reported on THAT item (success false, errorCode, error) and the loop goes on to the next — a stale id in a fan-out never discards the nineteen runs that were fine. A SKIPPED RECEIPT IS A SUCCESS HERE: a run was minted and its status/skipReason say why it did not start, so read items[] and never the status code or minted alone. Each successful item carries runId, status, skipReason and errorCode; run_events and run_get take the runId from there. Recorded as API-triggered runs, attributed to the manager key's minter. Own window: 2 calls per minute and 20 per hour per ACCOUNT, on top of the surface windows. Requires the runWorkers scope." +
     RUNTIME_NOTE,
   auth: "manager",
   method: "post",
@@ -198,6 +203,10 @@ const runWorkersBulk: ToolDescriptor = {
           modelSlug: z.string().max(64).optional().describe(
             "One-off model override for this worker's run (≤64 chars). Omit to use its configured model."
           ),
+          decisionProfileId: runWorker.schema.decisionProfileId,
+          sourceArgs: runWorker.schema.sourceArgs,
+          answers: runWorker.schema.answers,
+          maxItems: runWorker.schema.maxItems,
         })
       )
       .min(1)
@@ -1357,7 +1366,7 @@ const listModels: ToolDescriptor = {
   name: "models_list",
   title: "List Deployable Models",
   description:
-    "The models this ACCOUNT may deploy a worker on, priced per million tokens — the picker for worker_deploy's modelSlug. Each row carries slug (the value deployment calls take), displayName, provider, inputUsdPerMTok / outputUsdPerMTok / cachedInputUsdPerMTok / cacheWriteInputUsdPerMTok, contextWindowK, minTier, recommended, and the reasoning vocabulary. A MODEL ABSENT FROM THIS LIST IS NOT DEPLOYABLE HERE — either the account's tier does not reach it or no live provider serves it — so never pass a slug you read somewhere else; that is a 400 one call later. reasoningStyle says what the deployment's thinking field accepts FOR THAT MODEL: 'budget' takes a per-turn token count AS A STRING ('1024', between thinkingBudgetMin and thinkingBudgetMax), 'effort' takes one of reasoningEffortOptions ('high'), 'none' takes only 'default' or 'off'. Sending the wrong kind is 400 invalid_thinking. byokProviders lists the providers this account holds its own API key for (model_keys_list) — a run on a model from one of those bills the account's key plus a platform fee instead of the wallet. Pass kitSlug to have the kit's own recommendation marked recommended:true; without it nothing is marked. Language and hybrid workers: a DECISION worker (worker_get modelType 'decision') runs the decision model and takes no modelSlug. Requires readWorkers." +
+    "The models this ACCOUNT may deploy a worker on, priced per million tokens — the picker for worker_deploy's modelSlug. Each row carries slug (the value deployment calls take), displayName, provider, inputUsdPerMTok / outputUsdPerMTok / cachedInputUsdPerMTok / cacheWriteInputUsdPerMTok, contextWindowK, minTier, recommended, and the reasoning vocabulary. A MODEL ABSENT FROM THIS LIST IS NOT DEPLOYABLE HERE — either the account's tier does not reach it or no live provider serves it — so never pass a slug you read somewhere else; that is a 400 one call later. reasoningStyle says what the deployment's thinking field accepts FOR THAT MODEL: 'budget' takes a per-turn token count AS A STRING ('1024', between thinkingBudgetMin and thinkingBudgetMax), 'effort' takes one of reasoningEffortOptions ('high'), 'none' takes only 'default' or 'off'. Sending the wrong kind is 400 invalid_thinking. byokProviders lists the providers this account holds its own API key for (model_keys_list) — a run on a model from one of those bills the account's key plus a platform fee instead of the wallet. Pass kitSlug to have the kit's own recommendation marked recommended:true; without it nothing is marked. The separate decisionProfiles list contains enabled classifiers, their prices and supported capabilities; pass a row's profileId as decisionProfileId to decision_worker_create, worker_deploy, deployment_update, worker_run or run_bulk, or as a kit's default. Language and hybrid workers: a DECISION worker (worker_get modelType 'decision') runs the decision model and takes no modelSlug. Requires readWorkers." +
     RUNTIME_NOTE,
   auth: "manager",
   method: "get",
@@ -1411,6 +1420,7 @@ const deployWorker: ToolDescriptor = {
   method: "post",
   schema: {
     tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
+    decisionProfileId: z.string().min(1).max(64).optional().describe(DECISION_PROFILE_HINT),
     modelSlug: z.string().max(64).optional().describe(
       "Model to run on, from models_list (its slug field). Omit to take the kit's recommended model — 400 model_required when the kit named none."
     ),
@@ -1430,6 +1440,7 @@ const deployWorker: ToolDescriptor = {
   path: (params) => `${API}/${params.tokenId}/deployment`,
   bodyBuilder: (params) => ({
     modelSlug: params.modelSlug,
+    decisionProfileId: params.decisionProfileId,
     maxUsdPerRun: params.maxUsdPerRun,
     maxUsdPerDay: params.maxUsdPerDay,
     thinking: params.thinking,
@@ -1450,6 +1461,7 @@ const updateDeployment: ToolDescriptor = {
   method: "patch",
   schema: {
     tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
+    decisionProfileId: z.string().min(1).max(64).optional().describe(DECISION_PROFILE_HINT),
     modelSlug: z.string().max(64).optional().describe(
       "New model, from models_list. Omit to keep. Read the thinking interplay in the description before changing it."
     ),
@@ -1472,6 +1484,7 @@ const updateDeployment: ToolDescriptor = {
   path: (params) => `${API}/${params.tokenId}/deployment`,
   bodyBuilder: (params) => ({
     modelSlug: params.modelSlug,
+    decisionProfileId: params.decisionProfileId,
     maxUsdPerRun: params.maxUsdPerRun,
     maxUsdPerDay: params.maxUsdPerDay,
     thinking: params.thinking,
@@ -1566,6 +1579,7 @@ const LISTING_SCHEMA = {
   recommendedClients: z.array(z.string().max(40)).max(10).optional().describe(
     "≤10 client names, ≤40 chars each, e.g. claude, chatgpt, cursor."
   ),
+  decisionProfileId: z.string().min(1).max(64).optional().describe("Default classifier for new workers: jev-default (Jev, the default) or openai-luna. Decision and hybrid kits only; owners may override it on their worker or for one run."),
   recommendedModel: z.string().max(80).optional().describe("Display-only recommended model name (≤80)."),
   declaredModelFloor: z.string().max(80).optional().describe("Display-only minimum model (≤80)."),
   modelScores: z.array(z.record(z.unknown())).max(10).optional().describe(
@@ -1688,6 +1702,7 @@ const updateKit: ToolDescriptor = {
     appDescriptions: LISTING_SCHEMA.appDescriptions,
     recommendedClients: LISTING_SCHEMA.recommendedClients,
     recommendedModel: LISTING_SCHEMA.recommendedModel,
+    decisionProfileId: LISTING_SCHEMA.decisionProfileId,
     declaredModelFloor: LISTING_SCHEMA.declaredModelFloor,
     modelScores: LISTING_SCHEMA.modelScores,
     isProtected: LISTING_SCHEMA.isProtected,

@@ -30,6 +30,7 @@ export const createDecisionWorker: ToolDescriptor = {
     maxItems: z.number().int().min(1).max(50).default(20),
     operatorId: z.string().uuid().optional(),
     deploy: z.boolean().default(false).describe("Create a hosted deployment too. Does not execute a run."),
+    decisionProfileId: z.string().min(1).max(64).optional().describe("Default classifier for the kit and worker: a profileId from models_list.decisionProfiles. Omit for Jev. Independent of deployment and spend settings."),
     maxUsdPerRun: z.number().min(0.01).max(1000).optional(),
     maxUsdPerDay: z.number().min(0.01).max(10000).optional(),
   },

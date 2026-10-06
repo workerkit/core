@@ -6,6 +6,17 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.11] - 2026-10-06
+
+### Added
+
+- `decisionProfileId` chooses the classifier a decision or hybrid worker uses, independently of its language model: as a kit default (`kit_validate`, `kit_publish`, `kit_update`, `kit_replace`), on `decision_worker_create`, `worker_deploy` and `deployment_update`, and for a single run on `worker_run` or `run_bulk`. Omitted, the configured classifier applies (Jev by default).
+- `run_bulk` accepts `sourceArgs`, `answers` and `maxItems` per worker, as `worker_run` does.
+
+### Changed
+
+- `models_list` documents its `decisionProfiles` list: the enabled classifiers, such as Jev and OpenAI Decisions, with their prices and capabilities.
+
 ## [0.3.10] - 2026-10-06
 
 ### Added
