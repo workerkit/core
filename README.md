@@ -92,6 +92,16 @@ shows which types the saved bot read scopes allow. Message search needs a user
 token with `search:read`; reading history needs the channel ID, the matching
 history scopes and bot membership, and covers one conversation.
 
+## Worker kinds
+
+`worker_get` and `workers_list` report each worker's `modelType`, the same
+vocabulary as a kit's: `language` runs an instruction on a model chosen at
+deployment, `decision` runs a routing table on the decision model, `hybrid`
+classifies and then hands the selected items to one language-model agent, and
+`none` is an Action worker, described below. The kind decides which fields
+`worker_run` and `instruction_set` accept, and whether a worker is deployed at
+all.
+
 ## Classification followed by an agent task
 
 A hybrid worker classifies a bounded source window and runs one language-model agent
@@ -112,13 +122,13 @@ there is no preview mode, and unsupported run controls, including those in
 
 ## Action workers
 
-An Action worker runs explicitly selected, typed app tools without a reasoning
-model or a hosted deployment. `action_worker_options` lists the native and
-reviewed MCP apps, their tool schemas and the server's defaults. Creating one
-with `action_worker_create` and an `app` copies that app's default tools once;
-an explicit `actionSpec` can instead select up to 64 tools across apps. Slack
-is the compatibility default, not a restriction, and tools added to the
-catalog later must be selected by hand.
+An Action worker exposes explicitly selected, typed app tools that a caller
+invokes directly, without a reasoning model or a hosted deployment.
+`action_worker_options` lists the native and reviewed MCP apps, their tool
+schemas and the server's defaults. Creating one with `action_worker_create` and
+an `app` copies that app's default tools once; an explicit `actionSpec` can
+instead select up to 64 tools across apps. Omitting `app` selects Slack, and
+tools added to the catalog later must be selected by hand.
 
 Read a worker's tool schemas with `worker_tools` before calling one with
 `worker_tool_call`, which takes `tokenId`, `toolName`, `arguments` and an
@@ -127,9 +137,22 @@ optional `contractVersion: 1` and `idempotencyKey`. The key travels in the
 each intended write its own key and keep it for transport retries. Poll
 `worker_tool_invocation` for pending results, and never automatically resend
 an `outcome_unknown` call with a new key: the app may already have acted. A
-call cannot change the saved tool selection, connection or sender, and a
+refusal marked `retryable` can be tried again later under a new key. A call
+cannot change the saved tool selection, connection or sender, and a
 changed tool contract needs an explicit owner review and save. Generic write
 receipts keep the confirmation without storing private app response bodies.
+
+A call answers with `status` `succeeded`, `denied`, `failed`, `in_progress` or
+`outcome_unknown`, plus `invocationId` on a write (reads leave no receipt).
+Repeating a write's key with the same arguments returns the stored receipt
+without calling the app again; the same key with different arguments is a 409
+`idempotency_conflict`.
+
+An Action worker reports `modelType: "none"` and `deployment: null`, and
+`readiness.canInvoke` says whether its tools can be called now. It is never
+deployed or run: `worker_run` and `worker_deploy` refuse it with
+`400 action_worker_requires_invoke`, and it takes no instruction, schedule or
+trigger.
 
 Discovery needs `readWorkers`, creation needs `publishKits` and `installKits`,
 and calls and receipts need `invokeActions`; existing manager keys may need

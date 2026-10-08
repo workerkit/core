@@ -52,11 +52,13 @@ Hybrid runs are on demand; recurring runs are unsupported.
 ## Model compatibility
 
 Worker kind describes behavior, not a model vendor or version. Preserve model
-identifiers and version metadata returned by the API. Use the model identity supplied by the server; do not infer confidence semantics
-or silently substitute providers. `models_list` lists language models; it is not
-a decision-model picker.
+identifiers and version metadata returned by the API. Use the model identity
+supplied by the server; do not infer confidence semantics or silently substitute
+providers. `models_list` lists language models and, in `decisionProfiles`, the
+available classifiers; pass a profile's `profileId` as `decisionProfileId`.
 
-Consumers should validate inputs with each descriptor's Zod schema before calling
-`executeTool`; that function maps requests and does not perform schema validation.
+`executeTool` parses the input of descriptors marked `strictInput` and throws
+before any request when it is invalid or has unknown fields. Validate other
+descriptors' input with their Zod schema before calling it.
 `ApiResult.data` preserves the API response. `mapData` is an optional compact
 presentation for human or agent output, not the raw receipt contract.

@@ -6,6 +6,16 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.13] - 2026-10-08
+
+### Changed
+
+- Tool descriptions cover Action workers wherever a worker's kind matters. `worker_get` and `workers_list` list all four `modelType` values (`language`, `decision`, `hybrid` and `none` for an Action worker), and `worker_get` names the `readiness.canInvoke` flag. `worker_run`, `worker_deploy`, `instruction_get`, `instruction_set`, `schedule_create`, `models_list`, `deployments_list`, `deployment_get`, `fleet_health` and `kit_install` say how an Action worker answers them, and `kits_search`, `kit_install_preview`, `kit_authoring_guide`, `kit_app_tools` and `workerkit_about` name the Action kind.
+- The five Action tools describe every parameter, the shape of a call's answer, the refusals that come before the app is reached, and when a refused write is retried under a new key.
+- `kit_validate`, `kit_publish` and `kit_replace` describe an Action kit's content: `modelType: "none"`, an `actionSpec` of 1-64 tools, and no model, schedules, triggers, category slots or `appCodes`.
+- `app_connect` and `app_disconnect` point to `apps_list` for the current provider codes instead of listing them.
+- The hybrid worker guide's notes on `models_list` and input validation are brought up to date.
+
 ## [0.3.12] - 2026-10-07
 
 ### Added
@@ -121,13 +131,13 @@ Adds worker_decision_set with strict classifier, answer and revision inputs. Hyb
 
 - **`worker_run.preview`** and **`deployment_update.decisionMode`** — Preview
   mode is gone from the platform: every decision run is live and its routing
-  table's actions execute (owner's call, 2026-09-18: production always). The
-  server ignores a `preview` sent by an older client, so do not rely on it for
-  a dry run; `instruction_get` no longer reports a mode, the per-item rows say
-  `executed` / `ok` on every run, and the outcome line opens with "Judged" or
-  "Ranked" rather than a mode word. The descriptions that contrasted live with
-  preview no longer do: `kit_install_preview` and `worker_deploy` simply say
-  the table acts from the worker's first run.
+  table's actions execute. The server ignores a `preview` sent by an older
+  client, so do not rely on it for a dry run; `instruction_get` no longer
+  reports a mode, the per-item rows say `executed` / `ok` on every run, and the
+  outcome line opens with "Judged" or "Ranked" rather than a mode word. The
+  descriptions that contrasted live with preview no longer do:
+  `kit_install_preview` and `worker_deploy` simply say the table acts from the
+  worker's first run.
 
 ## [0.3.4] - 2026-09-18
 
