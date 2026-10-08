@@ -1,6 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { byName, executeTool, z, type PortEdenClient } from "../src/index.js";
 
+describe("Slack setup discovery", () => {
+  it.each(["workspaces", "conversations"])("%s forwards bounded metadata reads with manager authentication", async resource => {
+    const descriptor = byName(`app_slack_${resource}`)!;
+    const input = resource === "workspaces" ? { page: 2, pageSize: 10 }
+      : { workspaceId: "T1", types: "public_channel,im", q: "support", cursor: "opaque+/=", limit: 20 };
+    const calls: unknown[] = [];
+    const client = { get: async (path: string, opts: unknown) => { calls.push({ path, opts }); return { status: 200, data: {} }; } } as unknown as PortEdenClient;
+    await executeTool(client, descriptor, input, { token: "pe_mgr_test" });
+    expect(calls).toEqual([{ path: `/api/manage/apps/slack/${resource}`, opts: { params: z.object(descriptor.schema).parse(input), token: "pe_mgr_test", signal: undefined } }]);
+    expect(descriptor.annotations?.readOnlyHint).toBe(true);
+    expect(descriptor.description).toContain("discoverAppResources");
+  });
+  it("refuses unbounded paging, control characters and invalid conversation types", () => {
+    const schema = z.object(byName("app_slack_conversations")!.schema).strict();
+    for (const input of [{ limit: 201 }, { types: "all" }, { types: "im," }, { types: "im,,mpim" }, { types: "im,\tmpim" }, { workspaceId: "T1\n" }, { cursor: "x".repeat(2049) }, { q: "x\n" }])
+      expect(schema.safeParse(input).success).toBe(false);
+  });
+});
+
 describe("GitHub setup discovery", () => {
   it.each(["accounts", "repos", "branches"])("%s is an authenticated bounded read with complete query forwarding", async resource => {
     const descriptor = byName(`app_github_${resource}`)!;

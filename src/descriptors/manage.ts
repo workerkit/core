@@ -1,8 +1,9 @@
-// The 88 authenticated fleet-management tools, as pure descriptors. The
+// The 95 authenticated fleet-management tools, as pure descriptors. The
 // descriptions ARE the product surface: they are served verbatim to MCP
 // clients (and any future CLI help), so every contract nuance an agent must
 // not get wrong is taught here.
 
+import { actionDescriptors } from "./actions.js";
 import { appDiscoveryDescriptors } from "./app-discovery.js";
 import { compactDecisionReceipt } from "./decision-receipt.js";
 import { createDecisionWorker } from "./decision-authoring.js";
@@ -133,6 +134,7 @@ const getWorker: ToolDescriptor = {
 // ─── Runs ───────────────────────────────────────────────────────────────────
 
 const runWorker: ToolDescriptor = {
+  strictInput: true,
   mapData: compactDecisionReceipt,
   name: "worker_run",
   requestTimeoutMs: (params) => typeof params.waitSeconds === "number"
@@ -180,6 +182,7 @@ const runWorker: ToolDescriptor = {
 };
 
 const runWorkersBulk: ToolDescriptor = {
+  strictInput: true,
   name: "run_bulk",
   title: "Run Workers in Bulk",
   description:
@@ -207,7 +210,7 @@ const runWorkersBulk: ToolDescriptor = {
           sourceArgs: runWorker.schema.sourceArgs,
           answers: runWorker.schema.answers,
           maxItems: runWorker.schema.maxItems,
-        })
+        }).strict()
       )
       .min(1)
       .max(20)
@@ -455,7 +458,7 @@ const getMemory: ToolDescriptor = {
   name: "memory_get",
   title: "Get Worker Memory",
   description:
-    "The worker's memory: memoryProfile (stateless|contextual), selfFactsEnabled, rules (what the worker must DO — injected into every run), facts (what IS true — injected), recallFacts (searchable tier), pendingProposalCount, and a usage meter with every cap (rules, injected facts, char pools, recall) including recallFull — the only signal that the worker can no longer save new facts on its own.",
+    "Read the worker's independent memory settings and stored statements. memoryProfile: stateless omits recent-run summaries; contextual includes them. Owner rules and injected facts apply in both. selfFactsEnabled permits unreviewed recall-only saves, subject to effective access; later runs must search to use them. Returns rules, facts (injected), recallFacts (searchable), pendingProposalCount (inactive until owner approval), and usage caps including recallFull. Records collections are separate WorkerKit-owned structured data, not part of this fact store. Read the authoring guide's state section for feature selection and context hygiene.",
   auth: "manager",
   method: "get",
   schema: {
@@ -892,10 +895,10 @@ const setInstruction: ToolDescriptor = {
     whenToUse: z.string().max(500).optional().describe("Trigger text: when this worker should be used (≤500). Omit = unchanged; '' = clear."),
     description: z.string().max(2000).optional().describe("Longer display-only description (≤2000). Omit = unchanged; '' = clear."),
     memoryProfile: z.enum(["stateless", "contextual"]).optional().describe(
-      "Worker class: stateless (fresh each run) or contextual (carries prior-run reports). Omit = unchanged."
+      "Recent-run context: stateless omits summaries; contextual includes bounded summaries. Owner rules and injected facts apply in both; neither deletes saved facts or Records. Omit = unchanged."
     ),
     selfFactsEnabled: z.boolean().optional().describe(
-      "Whether the worker may save its own facts during runs. Set true when the content tells the worker to save facts. Omit = unchanged."
+      "Permit unreviewed, recall-only fact saves through add_fact, subject to effective access. Independent of memoryProfile. Instructions must say what to save and when to retrieve it with search_facts. Omit = unchanged."
     ),
   },
   path: (params) => `${API}/${params.tokenId}/instruction`,
@@ -1080,6 +1083,7 @@ const kitInstall: ToolDescriptor = {
     avatar: z.string().max(40).optional().describe(
       "Avatar slug for the new worker. Omit for the default."
     ),
+    slackConnectionId: z.number().int().positive().optional().describe("Action kits: pin a Slack bot from actionConnections in the install preview. No model or deployment is needed."),
     githubSelection: GITHUB_SELECTION.optional().describe(
       "Explicit GitHub targets for the new worker. Discover them with app_github_accounts, app_github_repos and app_github_branches (discoverAppResources scope). connectionId also appears as githubAccounts[].id in kit_install_preview. Use repositoryMode 'selected' with 1-500 stable repositoryIds for a specific job. 'all' includes future repositories granted to that account: choose it only when intended. accounts:[] leaves setup for later. Required for a GitHub kit when the key has discoverAppResources; legacy keys retain the single-account fallback. Discovery and branch inputs do not grant extra access."
     ),
@@ -1125,6 +1129,7 @@ const kitInstall: ToolDescriptor = {
     memoryAnswers: params.memoryAnswers,
     decisionAnswers: params.decisionAnswers,
     deploy: params.deploy,
+    slackConnectionId: params.slackConnectionId,
     deployment: params.deployment,
   }),
   annotations: CREATE,
@@ -1588,6 +1593,7 @@ const LISTING_SCHEMA = {
 };
 
 const CONTENT_SCHEMA = z.record(z.unknown()).describe(
+  "An ACTION kit declares modelType none and actionSpec (schemaVersion 1, tools of ref/version); omitting the spec copies the reviewed Slack defaults. No model, prompts, memory, schedules or deployment. Calls use worker_tools and worker_tool_call. " +
   "A HYBRID kit declares modelType hybrid, includes both instructionContent and a schema-3 decisionSpec with agentAction, and may use language-model commands, resources and memory. Its routes are agent/escalate/none, source maxItems at most 50, agentAction.maxItems at most 20 (defaults 20 and 5). Availability is server-gated. The kit's content: instructionContent (required on a LANGUAGE or HYBRID kit), whenToUse, startCommand, endCommand, endCommandDescription, skillResources, appCodes XOR apps, categorySlots, mcpServers, contactAllowAll, blockedSenderCategories, timeframePastDays, timeframeFutureDays, maxChildTokens, memoryProfile, selfFactsEnabled, memorySetup, schedules, triggers, usageWindows — or, for a DECISION kit, decisionSpec INSTEAD of instructionContent (a routing table the decision model runs per item; optionally modelType 'decision') and none of commands, whenToUse, skillResources, memorySetup or selfFactsEnabled; the compartment, stance and cadence fields apply to both kinds. Which kind a job is, the exact shape, every cap and every rule: kit_authoring_guide sections 'index' and 'schema'; app codes, tool keys and category slugs: kit_vocabulary. Validated strictly server-side — unknown keys are rejected, never ignored — so kit_validate first."
 );
 
@@ -1723,8 +1729,8 @@ const updateKit: ToolDescriptor = {
     contactAllowAll: z.boolean().optional().describe(
       "The token-wide contact/board stance: true allow-all, false deny-by-default."
     ),
-    memoryProfile: z.enum(["stateless", "contextual"]).optional().describe("The declared worker class."),
-    selfFactsEnabled: z.boolean().optional().describe("Whether the instruction expects the worker to save its own facts."),
+    memoryProfile: z.enum(["stateless", "contextual"]).optional().describe("Recent-run context: stateless omits summaries; contextual includes bounded summaries. Owner rules and injected facts apply in both."),
+    selfFactsEnabled: z.boolean().optional().describe("Permit unreviewed, recall-only fact saves independently of memoryProfile. The instruction must specify what to save and when to search for it."),
     memorySetup: z.array(z.record(z.unknown())).max(10).optional().describe(
       "Full replace of the memory-setup questions ([] asks nothing). Shape: kit_authoring_guide section 'schema'."
     ),
@@ -1834,7 +1840,7 @@ const OPERATOR_ID_HINT =
   "The operator (workspace) to act for, as a GUID from apps_list → operators[]. Omit for the account's default operator — the one installs and clones land on. Account-level providers ignore it.";
 
 const PROVIDER_HINT =
-  "A recipe's provider code from apps_list → apps[].connect[].provider: telegram, discord, slack, twilio, sendgrid, resend, tavily, brave, exa, brightData, firecrawl, nimble, granola, krisp, gong, zendesk, shopify, hubspot, notion, linear, monday, jira, asana, confluence, or mcp:<slug> for an MCP app (a platform one, or one of your own from mcp_servers_list — published or not). Case-insensitive.";
+  "A recipe's provider code from apps_list → apps[].connect[].provider: telegram, discord, slack, twilio, sendgrid, resend, tavily, brave, exa, brightData, firecrawl, nimble, granola, gong, zendesk, shopify, hubspot, notion, linear, monday, jira, asana, confluence, or mcp:<slug> for an MCP app (a platform one, or one of your own from mcp_servers_list — published or not). Case-insensitive.";
 
 const listApps: ToolDescriptor = {
   name: "apps_list",
@@ -2089,6 +2095,7 @@ export const manageDescriptors: readonly ToolDescriptor[] = [
   ...appDiscoveryDescriptors,
   ...onboardingDescriptors,
   createDecisionWorker,
+  ...actionDescriptors,
   setWorkerDecision,
   getKeyInfo,
   listWorkers,

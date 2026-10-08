@@ -46,7 +46,11 @@ export interface ToolDescriptor {
   requestTimeoutMs?: (params: Record<string, unknown>) => number | undefined;
   /** Single source for the MCP inputSchema AND future CLI flags. */
   schema: z.ZodRawShape;
-  /** Reject unknown top-level inputs instead of silently dropping unsupported controls. */
+  /**
+   * Reject unknown top-level inputs instead of silently dropping unsupported
+   * controls. executeTool parses such input against the schema and throws
+   * before any request is made.
+   */
   strictInput?: boolean;
   /** Structured success result. MCP adapters retain a serialized text fallback. */
   outputSchema?: z.ZodRawShape;

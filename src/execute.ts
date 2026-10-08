@@ -1,5 +1,6 @@
 import type { ApiResult, PortEdenClient } from "./client.js";
 import type { ToolDescriptor } from "./descriptors/types.js";
+import { z } from "./zod.js";
 
 export interface ExecuteToolOpts {
   /** Bearer forwarded upstream. Omit for anonymous descriptors. */
@@ -19,6 +20,9 @@ export async function executeTool(
   params: Record<string, unknown>,
   opts: ExecuteToolOpts = {}
 ): Promise<ApiResult> {
+  // Direct core consumers bypass MCP's input parser. Reject unsupported execution controls
+  // before a bodyBuilder can drop them and start a real run (notably legacy preview:true).
+  if (descriptor.strictInput) params = z.object(descriptor.schema).strict().parse(params);
   const resolvedPath =
     typeof descriptor.path === "function" ? descriptor.path(params) : descriptor.path;
   // Discovery stays anonymous even when a caller shares its authenticated client context.

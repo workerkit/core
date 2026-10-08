@@ -11,7 +11,7 @@ import {
   type ToolDescriptor,
 } from "../src/index.js";
 
-// The wire contract, pinned per descriptor: for all 97 tools, executeTool
+// The wire contract, pinned per descriptor: for all 104 tools, executeTool
 // against a recording fake client must produce exactly the {method, path,
 // query/opts, body} the live server produces today. Expected values are
 // derived from the server suite's manage-tools/directory tests so the two
@@ -68,12 +68,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 88 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
-    expect(manageDescriptors).toHaveLength(88);
+  it("ships exactly 95 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
+    expect(manageDescriptors).toHaveLength(95);
     expect(directoryDescriptors).toHaveLength(9);
-    expect(allDescriptors).toHaveLength(97);
+    expect(allDescriptors).toHaveLength(104);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(97);
+    expect(new Set(names).size).toBe(104);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -82,13 +82,20 @@ describe("registry", () => {
     for (const descriptor of directoryDescriptors) expect(descriptor.auth).toBe("anonymous");
   });
 
-  it("pins {auth, method} for every one of the 97 descriptors", () => {
+  it("pins {auth, method} for every one of the 104 descriptors", () => {
     // The full name → auth/method table. A new/renamed tool or a changed verb
     // must show up here explicitly — no descriptor ships with an unpinned method.
     expect(
       allDescriptors.map((x) => `${x.name} ${x.auth} ${x.method}`).sort()
     ).toEqual(
       [
+        "action_worker_options manager get",
+        "action_worker_create manager post",
+        "worker_tools manager get",
+        "worker_tool_call manager post",
+        "worker_tool_invocation manager get",
+        "app_slack_workspaces manager get",
+        "app_slack_conversations manager get",
         "decision_worker_create manager post",
         "onboarding_get manager get",
         "wallet_get manager get",
@@ -762,6 +769,18 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
   });
 
   it("forwards the caller's token on every manager call", async () => {
+    // Strict descriptors are validated before the request, so these need complete inputs.
+    const strictInputs: Record<string, Record<string, unknown>> = {
+      action_worker_create: { requestId: "action-1", name: "Slack", slackConnectionId: 1 },
+      worker_tool_call: { tokenId: 1, toolName: "slack_send_dm", arguments: { userId: "U123", text: "hello" }, idempotencyKey: "send-1" },
+      worker_tool_invocation: { tokenId: 1, invocationId: RUN_ID },
+      run_bulk: { workers: [{ tokenId: 1 }] },
+      worker_decision_set: { tokenId: 1, decisionSpec: null, updatedAt: null },
+      decision_worker_create: {
+        requestId: "forwarding", name: "Test", source: { recipe: "email-previews" },
+        questions: [{ key: "urgent", type: "noul", instructions: "Is this urgent?" }], confidenceFloor: 0.7,
+      },
+    };
     for (const descriptor of manageDescriptors) {
       // Minimal params satisfying each path builder.
       const params: Record<string, unknown> = {
@@ -770,7 +789,9 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
         deliveryId: 1, versionNumber: 1, channel: "slack", target: { channelId: "C1" },
         answer: "x", title: "x", workers: [{ title: "x" }], kitRef: "my-kit",
       };
-      const c = await run(descriptor, params, "pe_mgr_token_pin");
+      const input = strictInputs[descriptor.name]
+        ?? (descriptor.strictInput ? Object.fromEntries(Object.entries(params).filter(([key]) => key in descriptor.schema)) : params);
+      const c = await run(descriptor, input, "pe_mgr_token_pin");
       expect(c.opts.token, descriptor.name).toBe("pe_mgr_token_pin");
     }
   });
@@ -1004,6 +1025,10 @@ describe("anonymous wire contract (mirrors the server directory-tools suite)", (
     expect(guide.method).toBe("get");
     expect(guide.path).toBe("/api/directory/mcp/authoring/guide");
     expect(guide.opts.params).toEqual({ section: "schema" });
+
+    const state = await run(d("kit_authoring_guide"), { section: "state" });
+    expect(state.path).toBe("/api/directory/mcp/authoring/guide");
+    expect(state.opts.params).toEqual({ section: "state" });
 
     const all = await run(d("kit_vocabulary"), {});
     expect(all.path).toBe("/api/directory/mcp/authoring/vocabulary");

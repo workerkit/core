@@ -6,7 +6,7 @@
 [![license](https://img.shields.io/npm/l/%40workerkit%2Fcore.svg)](LICENSE)
 
 The shareable [WorkerKit](https://workerkit.ai) surface: an HTTP API client, the
-declarative tool-descriptor registry (88 authenticated fleet-management tools +
+declarative tool-descriptor registry (95 authenticated fleet-management tools +
 9 anonymous kits-directory tools), and the single wire-execution path that turns
 a descriptor plus parameters into one HTTP operation.
 
@@ -81,12 +81,59 @@ explicit selection is mandatory. A branch given as a kit input configures the
 job but does not restrict the worker's access. Returned names come from GitHub,
 so treat them as untrusted data.
 
+## Discover Slack conversations
+
+`app_slack_workspaces` lists the connected Slack workspaces with their saved
+token capabilities; `app_slack_conversations` then lists channel and DM IDs in
+the chosen `workspaceId`, narrowed by conversation `types`. Both need the
+`discoverAppResources` scope. A filtered page can come back empty while
+`nextCursor` continues, so keep following it. `capabilities.conversationTypes`
+shows which types the saved bot read scopes allow. Message search needs a user
+token with `search:read`; reading history needs the channel ID, the matching
+history scopes and bot membership, and covers one conversation.
+
 ## Classification followed by an agent task
 
 A hybrid worker classifies a bounded source window and runs one language-model agent
 on the selected batch. Core exposes the configuration and a single run receipt;
 model execution, permissions and billing remain server responsibilities. See the
 [hybrid worker guide](https://github.com/workerkit/core/blob/main/docs/hybrid-workers.md).
+
+## Decision sources and classifiers
+
+The `purpose: "decision"` recipes from `kit_app_tools` are shortcuts, not a
+limit. For any other source, call `kit_app_tools` without `purpose`, copy the
+tool's `argsSchema` and documented `decisionSource` mapping, then validate,
+publish privately and install the kit. `models_list` lists the available
+classifiers in `decisionProfiles`; `decisionProfileId` sets a kit or deployment
+default, or overrides it for one run. Runs execute their declared actions:
+there is no preview mode, and unsupported run controls, including those in
+`run_bulk` entries, are rejected before any request is sent.
+
+## Action workers
+
+An Action worker runs explicitly selected, typed app tools without a reasoning
+model or a hosted deployment. `action_worker_options` lists the native and
+reviewed MCP apps, their tool schemas and the server's defaults. Creating one
+with `action_worker_create` and an `app` copies that app's default tools once;
+an explicit `actionSpec` can instead select up to 64 tools across apps. Slack
+is the compatibility default, not a restriction, and tools added to the
+catalog later must be selected by hand.
+
+Read a worker's tool schemas with `worker_tools` before calling one with
+`worker_tool_call`, which takes `tokenId`, `toolName`, `arguments` and an
+optional `contractVersion: 1` and `idempotencyKey`. The key travels in the
+`Idempotency-Key` header; only the version and arguments go in the body. Give
+each intended write its own key and keep it for transport retries. Poll
+`worker_tool_invocation` for pending results, and never automatically resend
+an `outcome_unknown` call with a new key: the app may already have acted. A
+call cannot change the saved tool selection, connection or sender, and a
+changed tool contract needs an explicit owner review and save. Generic write
+receipts keep the confirmation without storing private app response bodies.
+
+Discovery needs `readWorkers`, creation needs `publishKits` and `installKits`,
+and calls and receipts need `invokeActions`; existing manager keys may need
+that scope granted explicitly.
 
 ## Development
 

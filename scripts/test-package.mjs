@@ -35,6 +35,11 @@ try {
       const require = createRequire(import.meta.url);
       assert.equal(require('@workerkit/core/package.json').version, ${JSON.stringify(pkg.version)});
       assert.ok(byName('worker_decision_set'));
+      assert.equal(byName('kit_authoring_guide').schema.section.parse('state'), 'state');
+      assert.ok(byName('action_worker_options').schema.app);
+      assert.equal(byName('worker_tool_call').requestTimeoutMs({}), 90000);
+      assert.ok(byName('app_slack_workspaces'));
+      assert.ok(byName('app_slack_conversations'));
       assert.ok(byName('app_github_accounts'));
       assert.ok(byName('app_github_repos'));
       assert.ok(byName('app_github_branches'));
@@ -50,6 +55,8 @@ try {
     assert.equal(version, pkg.version);
     const help = execFileSync(process.execPath, [entry, "decision", "set", "--help"], { encoding: "utf8" });
     assert.ok(help.includes("--decision-spec") && help.includes("--updated-at"));
+    const actionHelp = execFileSync(process.execPath, [entry, "workers", "create-action", "--help"], { encoding: "utf8" });
+    assert.ok(actionHelp.includes("--app") && actionHelp.includes("--action-spec"));
   }
   console.log(`${pack.name}@${pack.version}: package files and installed consumer passed (${names.length} files)`);
 } finally {

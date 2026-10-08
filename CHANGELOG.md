@@ -6,6 +6,21 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.12] - 2026-10-07
+
+### Added
+
+- Action workers: `action_worker_options`, `action_worker_create`, `worker_tools`, `worker_tool_call` and `worker_tool_invocation` create workers that run explicitly selected app tools without a model or deployment, and call those tools with idempotency keys and readable receipts under the new `invokeActions` scope. `kit_install` takes `slackConnectionId` to pin an action kit's Slack bot, and the directory tools accept the `none` model type for action kits.
+- Slack setup discovery: `app_slack_workspaces` lists connected workspaces with their saved token capabilities, and `app_slack_conversations` finds channel and DM IDs with bounded, cursor-based paging, under the `discoverAppResources` scope.
+- `kit_authoring_guide` accepts `section: "state"`, covering Records, the independent memory options and focused context retrieval.
+
+### Changed
+
+- Memory and kit descriptions separate recent-run summaries (`memoryProfile`), injected owner rules and facts, and worker-saved facts that later runs must search for (`selfFactsEnabled`). Records, WorkerKit-owned structured storage granted through app permissions, is separate from all three.
+- `app_connect` and `app_disconnect` no longer list `krisp`: Krisp now connects as the curated MCP app `mcp:krisp`.
+- `executeTool` parses the input of descriptors marked `strictInput` against their schema and throws before any request when it is invalid or has unknown fields. `worker_run` and `run_bulk`, including each bulk entry, are now strict, so an unsupported control such as the retired `preview` can no longer be dropped silently and start a real run.
+- `kit_app_tools` and `kit_vocabulary` document each app tool's `argsSchema` and `decisionSource` result mapping, for decision sources beyond the built-in recipes.
+
 ## [0.3.11] - 2026-10-06
 
 ### Added
