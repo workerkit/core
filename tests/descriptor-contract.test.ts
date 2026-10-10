@@ -11,7 +11,7 @@ import {
   type ToolDescriptor,
 } from "../src/index.js";
 
-// The wire contract, pinned per descriptor: for all 106 tools, executeTool
+// The wire contract, pinned per descriptor: for all 105 tools, executeTool
 // against a recording fake client must produce exactly the {method, path,
 // query/opts, body} the live server produces today. Expected values are
 // derived from the server suite's manage-tools/directory tests so the two
@@ -68,12 +68,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 97 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
+  it("ships exactly 97 manager + 8 anonymous descriptors, names unique, byName agrees", () => {
     expect(manageDescriptors).toHaveLength(97);
-    expect(directoryDescriptors).toHaveLength(9);
-    expect(allDescriptors).toHaveLength(106);
+    expect(directoryDescriptors).toHaveLength(8);
+    expect(allDescriptors).toHaveLength(105);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(106);
+    expect(new Set(names).size).toBe(105);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -190,7 +190,6 @@ describe("registry", () => {
         "directory_overview anonymous get",
         "kits_search anonymous get",
         "kit_get anonymous get",
-        "kit_stats anonymous get",
         "kit_authoring_guide anonymous get",
         "kit_vocabulary anonymous get",
         "kit_app_tools anonymous get",
@@ -1006,13 +1005,6 @@ describe("anonymous wire contract (mirrors the server directory-tools suite)", (
     expect(c.method).toBe("get");
     expect(c.path).toBe("/api/directory/mcp/kits/a%20b");
     expect(c.opts.params).toEqual({ includeResourceBodies: true });
-  });
-
-  it("kit_stats builds the stats path with no query params", async () => {
-    const c = await run(d("kit_stats"), { slug: "inbox-triage" });
-    expect(c.method).toBe("get");
-    expect(c.path).toBe("/api/directory/mcp/kits/inbox-triage/stats");
-    expect(c.opts.params).toEqual({});
   });
 
   it("publisher_get builds the publisher path and keeps slug out of the query", async () => {

@@ -7,7 +7,7 @@
 
 The shareable [WorkerKit](https://workerkit.ai) surface: an HTTP API client, the
 declarative tool-descriptor registry (97 authenticated fleet-management tools +
-9 anonymous kits-directory tools), and the single wire-execution path that turns
+8 anonymous kits-directory tools), and the single wire-execution path that turns
 a descriptor plus parameters into one HTTP operation.
 
 Deliberately MCP-free: descriptors carry MCP-shaped annotations and zod schemas,
@@ -154,9 +154,9 @@ deployed or run: `worker_run` and `worker_deploy` refuse it with
 `400 action_worker_requires_invoke`, and it takes no instruction, schedule or
 trigger.
 
-Discovery needs `readWorkers`, creation needs `publishKits` and `installKits`,
-and calls and receipts need `invokeActions`; existing manager keys may need
-that scope granted explicitly.
+Discovery needs `readWorkers`, creation needs `createWorkers`, and calls and
+receipts need `invokeActions`; existing manager keys may need those scopes
+granted explicitly.
 
 ## Development
 

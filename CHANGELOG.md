@@ -6,6 +6,22 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.15] - 2026-10-10
+
+### Added
+
+- `workers_list` accepts `ownerUserId` and returns each worker's owner. A key held by an account Admin can oversee the whole fleet, while a Member's key reaches only that member's own workers. `key_info` reports the key's subject (`subjectUserId`, `accountWideAuthority`) and says that removing the member or changing their role invalidates the key.
+
+### Changed
+
+- `action_worker_create` and `decision_worker_create` need the `createWorkers` scope instead of `publishKits` and `installKits`; keys that held both already carry `createWorkers`.
+- A manager key can be limited to selected workers. `key_info` reports `allWorkers` and `workerIds`; `workers_list`, `fleet_health`, `runs_feed`, `fleet_pulse` and `deployments_list` show only those workers, and any other worker or run id is `404 not_found`, exactly like one that does not exist. A worker the key creates (`kit_install`, cloning, Action and Decision creation) joins its selection, `kit_publish` from a source worker needs that worker in the selection, and `worker_delete` and `worker_set_enabled` refuse with `409 sub_workers_outside_key` when the cascade would reach past it.
+
+### Removed
+
+- `kit_stats`, the per-kit adoption read.
+- Download counts from the `kits_search`, `kit_get` and `publisher_get` descriptions (`downloadCount`, `totalDownloads`).
+
 ## [0.3.14] - 2026-10-09
 
 ### Added

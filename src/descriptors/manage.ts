@@ -23,10 +23,10 @@ const API = "/api/manage/workers";
 // ─── Shared phrasing ────────────────────────────────────────────────────────
 
 const TOKEN_ID_HINT =
-  "The worker's numeric tokenId, as returned by workers_list. 404 not_found = no such worker on this account (another account's is indistinguishable by design).";
+  "The worker's numeric tokenId, as returned by workers_list. 404 not_found = no such worker on this account, or one outside this key's worker selection (another account's and an unselected one are indistinguishable by design; key_info says which workers the key reaches).";
 
 const RUN_ID_HINT =
-  "The run's UUID, as returned by worker_run (runId), workers_list (currentRunId / lastRun.runId), or worker_runs.";
+  "The run's UUID, as returned by worker_run (runId), workers_list (currentRunId / lastRun.runId), or worker_runs. 404 not_found = no such run, or its worker is outside this key's worker selection.";
 
 const DECISION_PROFILE_HINT =
   "Classifier choice: a profileId from models_list.decisionProfiles, independent of the language model. Platform-funded for decision and hybrid workers. Review sample results and confidence thresholds when changing providers. Omit to keep the configured classifier (Jev by default).";
@@ -52,7 +52,7 @@ const HYBRID_NOTE =
 // younger than the surface, so a 403 there is read as "re-scope the key", not
 // "retry".
 const NEW_SCOPE_NOTE =
-  " A key minted before this scope existed does not carry it (even one minted with \"all\"): a 403 here is fixed by an account admin re-scoping or re-minting the key at https://workerkit.ai, never by retrying — check key_info's scopes first.";
+  " A key minted before this scope existed does not carry it (even one minted with \"all\"): ask its owner or an account Admin to review its scope and authority at https://workerkit.ai, never retry automatically — check key_info's scopes first.";
 
 // ─── Key ────────────────────────────────────────────────────────────────────
 
@@ -60,7 +60,7 @@ const getKeyInfo: ToolDescriptor = {
   name: "key_info",
   title: "Key Info",
   description:
-    "What the presented manager key IS: accountId, accountTitle, keyName, keyPrefix (a display prefix — never the key itself), scopes, expiresAt, and serverTimeUtc. CALL THIS FIRST, before planning any work: the scopes list is exactly what the other tools on this surface will accept, so read it up front rather than discovering a wall mid-task. Any valid key may ask — this is the one tool that needs NO scope. A call outside the list fails 403 OPERATION_NOT_ALLOWED naming the missing scope, and only an account admin can add one (re-scope or re-mint the key at https://workerkit.ai) — never retry a 403. A scope added to the product AFTER a key was minted does NOT reach that key, INCLUDING a key minted with \"all\" (which stored the bitmask of the scopes that existed that day), so a tool can 403 on a key its owner believes has everything: this list is the only truth about it. Compute expiry and elapsed times against serverTimeUtc, never your own clock.",
+    "What the presented manager key IS: accountId, accountTitle, subjectUserId, accountWideAuthority, keyName, keyPrefix (a display prefix — never the key itself), scopes, allWorkers, workerIds, expiresAt, and serverTimeUtc. accountWideAuthority:false limits all permissions to the subject member's own workers. Membership removal or role change invalidates the key and requires new consent. Admin-only setup operations remain unavailable to member keys, regardless of scopes. CALL THIS FIRST, before planning any work: the scopes list is exactly what the other tools on this surface will accept, so read it up front rather than discovering a wall mid-task. allWorkers false means the key reaches only workerIds (plus any worker it creates): workers_list, fleet_health, runs_feed, fleet_pulse and deployments_list then show those workers only, and any other worker or run id is 404 not_found exactly like one that does not exist — the credential owner or an account Admin can change the selection at https://workerkit.ai, within the subject's live authority. Any valid key may ask — this is the one tool that needs NO scope. A call outside the list fails 403 OPERATION_NOT_ALLOWED naming the missing scope, and the credential owner or an account Admin can change its scopes at https://workerkit.ai within the existing grant ceiling — never retry a 403. A scope added to the product AFTER a key was minted does NOT reach that key, INCLUDING a key minted with \"all\" (which stored the bitmask of the scopes that existed that day), so a tool can 403 on a key its owner believes has everything: this list is the only truth about it. Compute expiry and elapsed times against serverTimeUtc, never your own clock.",
   auth: "manager",
   method: "get",
   schema: {},
@@ -74,7 +74,7 @@ const listWorkers: ToolDescriptor = {
   name: "workers_list",
   title: "List Workers",
   description:
-    "List the AI workers on this account with live status: title, avatar, status (active|paused|expired), isEnabled, expiresAt, readiness (status ready|blocked with the actionable issues — the same block worker_get carries), modelType (language | decision | hybrid | none — see worker_get), deployment (null = this worker is NOT on the hosted runtime and will never run, whatever readiness says; worker_deploy fixes that — except on an Action worker, modelType none, which is never deployed or run: worker_tools lists its tools and worker_tool_call calls one), lastRun (the newest SETTLED run: runId, outcome succeeded|attention|failed|awaitingInput|skipped|canceled, skipReason, errorCode — in-flight runs never appear here), schedule rollup (total/enabled/nextRunUtc), and live state (isRunning, inFlightRuns, currentRunId — poll run_get with currentRunId to watch it). FILTERS, all optional and ANDed: status, deployed, readiness, q (title substring); an unknown status/readiness value is a 400 invalid_filter, never an empty page. totalWorkers is the count BEFORE filtering: 0 means nothing is installed on this account yet (shortlist a kit with kits_search on the Directory server, kit_install it with deploy:true), non-zero with an empty workers[] means the filter matched nothing. For 'what is wrong with this fleet' call fleet_health instead of scanning this list. Compute elapsed/next-run times against the response's serverTimeUtc, never your own clock. IMPORTANT: lastRun.resultText is the report the worker itself wrote and requires the manager key to hold the readRuns scope IN ADDITION to readWorkers — with readWorkers only it is null, which does NOT mean the run produced no report; check your key's scopes before concluding anything from a null. Scope model for every tool here: a 403 OPERATION_NOT_ALLOWED names the missing scope — the key must be re-minted with broader scopes by an account admin at https://workerkit.ai (do not retry the call).",
+    "List the AI workers on this account with live status: title, avatar, status (active|paused|expired), isEnabled, expiresAt, readiness (status ready|blocked with the actionable issues — the same block worker_get carries), modelType (language | decision | hybrid | none — see worker_get), deployment (null = this worker is NOT on the hosted runtime and will never run, whatever readiness says; worker_deploy fixes that — except on an Action worker, modelType none, which is never deployed or run: worker_tools lists its tools and worker_tool_call calls one), lastRun (the newest SETTLED run: runId, outcome succeeded|attention|failed|awaitingInput|skipped|canceled, skipReason, errorCode — in-flight runs never appear here), schedule rollup (total/enabled/nextRunUtc), and live state (isRunning, inFlightRuns, currentRunId — poll run_get with currentRunId to watch it). FILTERS, all optional and ANDed: status, deployed, readiness, q (title substring); an unknown status/readiness value is a 400 invalid_filter, never an empty page. totalWorkers is the count BEFORE filtering, over the workers this key reaches: 0 means nothing the key can reach is installed yet (key_info says whether the key is limited to selected workers; shortlist a kit with kits_search on the Directory server and kit_install it with deploy:true — a key limited to selected workers gains the worker it installs), non-zero with an empty workers[] means the filter matched nothing. For 'what is wrong with this fleet' call fleet_health instead of scanning this list. Compute elapsed/next-run times against the response's serverTimeUtc, never your own clock. IMPORTANT: lastRun.resultText is the report the worker itself wrote and requires the manager key to hold the readRuns scope IN ADDITION to readWorkers — with readWorkers only it is null, which does NOT mean the run produced no report; check your key's scopes before concluding anything from a null. Scope model for every tool here: a 403 OPERATION_NOT_ALLOWED names the missing scope — the key must be re-minted with broader scopes by an account admin at https://workerkit.ai (do not retry the call).",
   auth: "manager",
   method: "get",
   schema: {
@@ -88,6 +88,7 @@ const listWorkers: ToolDescriptor = {
       "ready = configuration lets it run hosted; blocked = something actionable is missing (an app connection, an instruction, an identity). Omit for both."
     ),
     q: z.string().max(100).optional().describe("Case-insensitive substring of the worker's title."),
+    ownerUserId: z.number().int().positive().optional().describe("Filter by ownerUserId from a worker row. This only narrows the workers the key already reaches."),
   },
   path: API,
   annotations: READ_ONLY,
@@ -187,7 +188,7 @@ const runWorkersBulk: ToolDescriptor = {
   name: "run_bulk",
   title: "Run Workers in Bulk",
   description:
-    "Run several workers now in ONE call — a prompt fanned out across a fleet without spending the single trigger's 30/min budget one worker at a time. Up to 20 workers per call, each named by workerId (preferred) or its deprecated tokenId (the GUID wins when both are sent), each with its own optional prompt, modelSlug, decisionProfileId, sourceArgs, answers and maxItems. IT IS NOT ATOMIC AND IT DOES NOT STOP: every worker passes the mint gauntlet on its own, so an unknown id, a missing deployment or a cap already hit is reported on THAT item (success false, errorCode, error) and the loop goes on to the next — a stale id in a fan-out never discards the nineteen runs that were fine. A SKIPPED RECEIPT IS A SUCCESS HERE: a run was minted and its status/skipReason say why it did not start, so read items[] and never the status code or minted alone. Each successful item carries runId, status, skipReason and errorCode; run_events and run_get take the runId from there. Recorded as API-triggered runs, attributed to the manager key's minter. Own window: 2 calls per minute and 20 per hour per ACCOUNT, on top of the surface windows. Requires the runWorkers scope." +
+    "Run several workers now in ONE call — a prompt fanned out across a fleet without spending the single trigger's 30/min budget one worker at a time. Up to 20 workers per call, each named by workerId (preferred) or its deprecated tokenId (the GUID wins when both are sent), each with its own optional prompt, modelSlug, decisionProfileId, sourceArgs, answers and maxItems. IT IS NOT ATOMIC AND IT DOES NOT STOP: every worker passes the mint gauntlet on its own, so an unknown id (or one outside this key's worker selection, which reads the same), a missing deployment or a cap already hit is reported on THAT item (success false, errorCode, error) and the loop goes on to the next — a stale id in a fan-out never discards the nineteen runs that were fine. A SKIPPED RECEIPT IS A SUCCESS HERE: a run was minted and its status/skipReason say why it did not start, so read items[] and never the status code or minted alone. Each successful item carries runId, status, skipReason and errorCode; run_events and run_get take the runId from there. Recorded as API-triggered runs, attributed to the manager key's minter. Own window: 2 calls per minute and 20 per hour per ACCOUNT, on top of the surface windows. Requires the runWorkers scope." +
     RUNTIME_NOTE,
   auth: "manager",
   method: "post",
@@ -224,14 +225,15 @@ const runWorkersBulk: ToolDescriptor = {
 
 // ─── Fleet-wide run reads ───────────────────────────────────────────────────
 // The two calls that watch a WHOLE fleet without fanning out per worker. Both are
-// account-scoped by the key itself, so neither takes a worker id, and both are
-// deliberately money-free: cost lives on the run receipt.
+// scoped by the key itself — its account, and its worker selection when it has
+// one — so neither takes a worker id, and both are deliberately money-free: cost
+// lives on the run receipt.
 
 const runsFeed: ToolDescriptor = {
   name: "runs_feed",
   title: "Account Run Feed",
   description:
-    "Every worker's runs in ONE account-wide feed, newest first — THE fleet-watching call. When you are minding many workers, call this instead of looping workers_list or worker_runs per worker. Each row is a scan line: runId, workerId, tokenTitle, status, outcome (running|succeeded|attention|failed|awaitingInput|skipped|canceled — 'attention' is a SUCCEEDED run that hit friction, i.e. firewall denials, tool errors or reported issues, so report it apart from a clean success; 'awaitingInput' is a run that ended by asking its owner a question — waiting on a person, not broken: run_question reads it, run_answer answers it, and fleet_health lists every open one), skipReason, errorCode, triggerKind, scheduleTitle, timings, the friction counts (toolCalls, firewallDenials, toolErrors, issueCount, hasBlockerIssue), and one line of what the run did in summary + summarySource ('distilled' = a condensed record of what the run ACTUALLY did; 'report' = the worker's OWN closing account; 'error'/'skipped'/'activity' = the machine's own words — these are not equally reliable, so say which one you are quoting). Carries NO cost and NO token counts by design: read those from run_get on the one run that matters. Cursor-paged, never page-numbered — scroll by passing the previous response's nextCursor back as cursor (hasMore says whether another page exists), and re-fetch with NO cursor to refresh the head; there is deliberately no total count. A cursor we did not issue is a 400 invalid_cursor — drop it and reload the head. An unknown status is a 400 invalid_status, never a silently ignored filter. Requires the readRuns scope." +
+    "Every reachable worker's runs in ONE feed (the whole account for an all-workers key), newest first — THE fleet-watching call. When you are minding many workers, call this instead of looping workers_list or worker_runs per worker. Each row is a scan line: runId, workerId, tokenTitle, status, outcome (running|succeeded|attention|failed|awaitingInput|skipped|canceled — 'attention' is a SUCCEEDED run that hit friction, i.e. firewall denials, tool errors or reported issues, so report it apart from a clean success; 'awaitingInput' is a run that ended by asking its owner a question — waiting on a person, not broken: run_question reads it, run_answer answers it, and fleet_health lists every open one), skipReason, errorCode, triggerKind, scheduleTitle, timings, the friction counts (toolCalls, firewallDenials, toolErrors, issueCount, hasBlockerIssue), and one line of what the run did in summary + summarySource ('distilled' = a condensed record of what the run ACTUALLY did; 'report' = the worker's OWN closing account; 'error'/'skipped'/'activity' = the machine's own words — these are not equally reliable, so say which one you are quoting). Carries NO cost and NO token counts by design: read those from run_get on the one run that matters. Cursor-paged, never page-numbered — scroll by passing the previous response's nextCursor back as cursor (hasMore says whether another page exists), and re-fetch with NO cursor to refresh the head; there is deliberately no total count. A cursor we did not issue is a 400 invalid_cursor — drop it and reload the head. An unknown status is a 400 invalid_status, never a silently ignored filter. Requires the readRuns scope." +
     RUNTIME_NOTE,
   auth: "manager",
   method: "get",
@@ -260,7 +262,7 @@ const fleetPulse: ToolDescriptor = {
   name: "fleet_pulse",
   title: "Fleet Pulse",
   description:
-    "Every run IN FLIGHT on the account right now, in one call — the other fleet-watching call, and the single authority for \"who is working\". Use it instead of sweeping workers_list for isRunning, or worker_runs per worker. Returns serverTimeUtc plus activeRuns[]: runId, workerId, tokenTitle, status (Pending | Dispatched | Running — a QUEUED run is not yet working, so never say \"running for 3m\" about one), createDate, startedAtUtc (null while Pending/Dispatched, so render elapsed from startedAtUtc ?? createDate and label the queued case differently), triggerKind, scheduleTitle, activitySummary, lastTool + toolActive (true = the run is INSIDE that tool — 'using X'; false = that call has ended and the name is the trailing record — 'last used X'), recentToolCalls[] (newest first, ≤25, each with a seq: accumulate across polls by appending anything whose seq beats the highest you kept for that run), toolCallCount (every call the run has made — if your kept list is shorter, the run out-ran the window and the rest is in run_events), activityUpdatedAtUtc, and liveness (live|stalled while Running). ALWAYS compute elapsed times against the response's serverTimeUtc, never your own clock. Capped at 100 rows with NO paging — truncated:true says the cap bit; an empty activeRuns[] is the normal, healthy answer, not an error or a failure to look. No cost fields: money lives on the run receipt (run_get). Requires the readRuns scope." +
+    "Every run IN FLIGHT right now on the workers this key reaches, in one call — the other fleet-watching call, and the single authority for \"who is working\". Use it instead of sweeping workers_list for isRunning, or worker_runs per worker. Returns serverTimeUtc plus activeRuns[]: runId, workerId, tokenTitle, status (Pending | Dispatched | Running — a QUEUED run is not yet working, so never say \"running for 3m\" about one), createDate, startedAtUtc (null while Pending/Dispatched, so render elapsed from startedAtUtc ?? createDate and label the queued case differently), triggerKind, scheduleTitle, activitySummary, lastTool + toolActive (true = the run is INSIDE that tool — 'using X'; false = that call has ended and the name is the trailing record — 'last used X'), recentToolCalls[] (newest first, ≤25, each with a seq: accumulate across polls by appending anything whose seq beats the highest you kept for that run), toolCallCount (every call the run has made — if your kept list is shorter, the run out-ran the window and the rest is in run_events), activityUpdatedAtUtc, and liveness (live|stalled while Running). ALWAYS compute elapsed times against the response's serverTimeUtc, never your own clock. Capped at 100 rows with NO paging — truncated:true says the cap bit; an empty activeRuns[] is the normal, healthy answer, not an error or a failure to look. No cost fields: money lives on the run receipt (run_get). Requires the readRuns scope." +
     RUNTIME_NOTE,
   auth: "manager",
   method: "get",
@@ -1001,7 +1003,7 @@ const setWorkerEnabled: ToolDescriptor = {
   name: "worker_set_enabled",
   title: "Start or Stop Worker",
   description:
-    "Start (enabled=true) or stop (enabled=false) a worker. Stopping pauses the WHOLE worker: its own API key stops working AND its schedules stop firing; re-enabling restores both. THIS IS THE REVERSIBLE ONE — reach for it whenever someone says stop, pause, turn off or disable; worker_delete is permanent and nothing undoes it. Two things about stopping an ORCHESTRATOR that the response does not tell you: it CASCADES to that worker's sub-workers (children and grandchildren), and re-enabling the parent brings back ONLY the parent — each sub-worker needs its own worker_set_enabled(tokenId, true), so check workers_list afterwards rather than assuming the fleet came back. And re-enabling consumes a worker slot: at the plan's worker cap it is refused with 402 limit_exceeded, so a worker stopped before a downgrade can be stuck stopped until the owner upgrades or deletes another worker. Returns {tokenId, isEnabled}. Idempotent. Requires the manageState scope.",
+    "Start (enabled=true) or stop (enabled=false) a worker. Stopping pauses the WHOLE worker: its own API key stops working AND its schedules stop firing; re-enabling restores both. THIS IS THE REVERSIBLE ONE — reach for it whenever someone says stop, pause, turn off or disable; worker_delete is permanent and nothing undoes it. Two things about stopping an ORCHESTRATOR that the response does not tell you: it CASCADES to that worker's sub-workers (children and grandchildren), and re-enabling the parent brings back ONLY the parent — each sub-worker needs its own worker_set_enabled(tokenId, true), so check workers_list afterwards rather than assuming the fleet came back. And re-enabling consumes a worker slot: at the plan's worker cap it is refused with 402 limit_exceeded, so a worker stopped before a downgrade can be stuck stopped until the owner upgrades or deletes another worker. A key limited to selected workers is refused with 409 sub_workers_outside_key when stopping would cascade to a sub-worker outside its selection — an account Admin adds those sub-workers to the key at https://workerkit.ai, or stops them separately. Returns {tokenId, isEnabled}. Idempotent. Requires the manageState scope.",
   auth: "manager",
   method: "post",
   schema: {
@@ -1018,7 +1020,7 @@ const deleteWorker: ToolDescriptor = {
   name: "worker_delete",
   title: "Delete Worker",
   description:
-    "Delete a worker PERMANENTLY. Not reversible by any call, on any surface: its own pe_ key stops working immediately (an agent holding it starts failing), its schedules stop firing, its instruction, memory, deployment and delivery destinations go with it, and it disappears from this API, MCP, the CLI and the dashboard alike. TO STOP A WORKER YOU MIGHT WANT BACK, USE worker_set_enabled WITH enabled:false — that pauses the key and the schedules together and is reversible (with two caveats it states: stopping cascades to sub-workers and re-enabling brings back only the worker you name, and re-enabling is refused with 402 at the plan's worker cap); THIS one cannot be undone at all, so confirm with the person before calling it, never infer it from 'get rid of', 'turn off' or 'stop'. THE SURPRISE: deleting an orchestrator DELETES ITS SUB-WORKERS TOO (children and grandchildren — a dead orchestrator must never leave live workers behind), and the response's subWorkersDeleted says how many went with it; report that number, because those workers had their own jobs. What SURVIVES: the apps stay connected for every other worker on the operator, and the run receipts stay readable through the account-wide reads (runs_feed, run_get) — a deleted worker's spending is still part of the account's history. A run in flight settles normally and is neither cancelled nor refunded; runsInFlight reports how many were running when the delete landed. Deleting FREES A WORKER SLOT, which is the fix for kit_install's 402 limit_exceeded when the owner would rather not upgrade. 404 means the worker does not exist or is not on this account — including a second delete of one already gone, so a 404 on a retry means the first call worked. Requires the deleteWorkers scope." +
+    "Delete a worker PERMANENTLY. Not reversible by any call, on any surface: its own pe_ key stops working immediately (an agent holding it starts failing), its schedules stop firing, its instruction, memory, deployment and delivery destinations go with it, and it disappears from this API, MCP, the CLI and the dashboard alike. TO STOP A WORKER YOU MIGHT WANT BACK, USE worker_set_enabled WITH enabled:false — that pauses the key and the schedules together and is reversible (with two caveats it states: stopping cascades to sub-workers and re-enabling brings back only the worker you name, and re-enabling is refused with 402 at the plan's worker cap); THIS one cannot be undone at all, so confirm with the person before calling it, never infer it from 'get rid of', 'turn off' or 'stop'. THE SURPRISE: deleting an orchestrator DELETES ITS SUB-WORKERS TOO (children and grandchildren — a dead orchestrator must never leave live workers behind), and the response's subWorkersDeleted says how many went with it; report that number, because those workers had their own jobs. What SURVIVES: the apps stay connected for every other worker on the operator, and the run receipts stay readable through the account-wide reads (runs_feed, run_get) — a deleted worker's spending is still part of the account's history. A run in flight settles normally and is neither cancelled nor refunded; runsInFlight reports how many were running when the delete landed. Deleting FREES A WORKER SLOT, which is the fix for kit_install's 402 limit_exceeded when the owner would rather not upgrade. 404 means the worker does not exist, is not on this account, or is outside this key's worker selection — including a second delete of one already gone, so a 404 on a retry means the first call worked. 409 sub_workers_outside_key = a key limited to selected workers would delete sub-workers outside its selection, so the delete is refused rather than widened; an account Admin adds them to the key first. Requires the deleteWorkers scope." +
     NEW_SCOPE_NOTE,
   auth: "manager",
   method: "delete",
@@ -1030,10 +1032,11 @@ const deleteWorker: ToolDescriptor = {
 };
 
 // ─── Kit install ────────────────────────────────────────────────────────────
-// The one place on this surface an agent can CREATE a worker: install a kit from
-// the public directory. Both tools need the installKits scope (keys minted
-// before the scope existed — including old "all" keys — lack it until an
-// account admin re-scopes them).
+// Install a kit from the public directory — the vetted route to a new worker
+// (createWorkers covers the from-scratch and clone routes). Both tools need the
+// installKits scope (keys minted before the scope existed — including old "all"
+// keys — lack it until an account admin re-scopes them). A key limited to
+// selected workers gains the worker it installs.
 
 const KITS_API = "/api/manage/kits";
 
@@ -1417,7 +1420,7 @@ const listDeployments: ToolDescriptor = {
   name: "deployments_list",
   title: "List Deployments",
   description:
-    "Every DEPLOYED worker on the account with its model, spend ceilings and deployment status — the fleet answer to \"what is actually able to run\". A worker that appears in workers_list but NOT here is not on the runtime, however complete it looks: that is the single most common reason a newly built worker never produces a run. Action workers (modelType none) never appear here, by design: they are not deployed, and their tools are called with worker_tool_call. Account-scoped by the key, so it takes no worker id. Requires readWorkers." +
+    "Every DEPLOYED worker this key reaches (the whole account for an all-workers key) with its model, spend ceilings and deployment status — the fleet answer to \"what is actually able to run\". A worker that appears in workers_list but NOT here is not on the runtime, however complete it looks: that is the single most common reason a newly built worker never produces a run. Action workers (modelType none) never appear here, by design: they are not deployed, and their tools are called with worker_tool_call. Scoped by the key — its account and its worker selection — so it takes no worker id. Requires readWorkers." +
     RUNTIME_NOTE,
   auth: "manager",
   method: "get",
@@ -1564,10 +1567,11 @@ const getWorkerPermissions: ToolDescriptor = {
 
 // ─── Kits (authoring) ───────────────────────────────────────────────────────
 //
-// The publishKits lane. A PRIVATE kit installed with kit_install is how a worker
-// is created from scratch on this surface (cloning is the only other non-kit
-// path), so these descriptors teach the flow as much as the wire: read the guide
-// and the vocabulary on the Directory server, validate, publish private, install.
+// The publishKits lane. A PRIVATE kit installed with kit_install is the kit route
+// to a worker from scratch (action_worker_create, decision_worker_create and
+// cloning are the createWorkers routes), so these descriptors teach the flow as
+// much as the wire: read the guide and the vocabulary on the Directory server,
+// validate, publish private, install.
 
 const KIT_REF = z.string().min(1).max(120);
 const KIT_REF_HINT =
@@ -1705,7 +1709,7 @@ const publishKit: ToolDescriptor = {
   name: "kit_publish",
   title: "Publish Kit",
   description:
-    "Publish a NEW kit on this account — from authored content, or from any worker on the account (sourceWorkerId: its instruction, texts, permissions, schedules and triggers become the kit; rule VALUES never travel, only that rules exist). Exactly one of content / sourceWorkerId. NOT idempotent: every successful call creates another listing — never retry a success; on a timeout read my_kits_list before trying again. visibility 'private' (recommended first) makes a kit only this account can install: kit_install its slug and you have a worker built from scratch through the reviewed manifest pipeline. 'public' (default) lists it in the directory after the fail-closed supply-chain scan — 503 kit_scan_unavailable means retry later with the SAME body, or publish private. 400 names the FIRST failing rule (run kit_validate first to see them all). 403 = the source worker was installed from a protected kit, whose text belongs to that kit's publisher. 409 = publisherName taken (first publish only). Caps: 20 publishes/hour per account, 100 PUBLIC kits per account (private kits are unlimited; an unlisted or admin-removed listing still holds its slot). Returns the listing (slug, status, moderationStatus, requiredInputs, lintWarnings, …); a public listing can still be flagged minutes later by the semantic scan — re-read my_kits_list, and kit_scan_get has the findings." +
+    "Publish a NEW kit on this account — from authored content, or from any worker this key reaches (sourceWorkerId: its instruction, texts, permissions, schedules and triggers become the kit; rule VALUES never travel, only that rules exist; a worker outside the key's selection is 404 not_found). Exactly one of content / sourceWorkerId. NOT idempotent: every successful call creates another listing — never retry a success; on a timeout read my_kits_list before trying again. visibility 'private' (recommended first) makes a kit only this account can install: kit_install its slug and you have a worker built from scratch through the reviewed manifest pipeline. 'public' (default) lists it in the directory after the fail-closed supply-chain scan — 503 kit_scan_unavailable means retry later with the SAME body, or publish private. 400 names the FIRST failing rule (run kit_validate first to see them all). 403 = the source worker was installed from a protected kit, whose text belongs to that kit's publisher. 409 = publisherName taken (first publish only). Caps: 20 publishes/hour per account, 100 PUBLIC kits per account (private kits are unlimited; an unlisted or admin-removed listing still holds its slot). Returns the listing (slug, status, moderationStatus, requiredInputs, lintWarnings, …); a public listing can still be flagged minutes later by the semantic scan — re-read my_kits_list, and kit_scan_get has the findings." +
     AUTHORING_FLOW_NOTE,
   auth: "manager",
   method: "post",
@@ -1713,7 +1717,7 @@ const publishKit: ToolDescriptor = {
     ...LISTING_SCHEMA,
     content: CONTENT_SCHEMA.optional(),
     sourceWorkerId: z.string().uuid().optional().describe(
-      "Publish from this worker instead of content (any worker on the account — its workerId from workers_list). Never together with content."
+      "Publish from this worker instead of content (any worker this key reaches — its workerId from workers_list; one outside the key's selection is 404 not_found). Never together with content."
     ),
   },
   path: KITS_API,
@@ -1846,7 +1850,7 @@ const deleteKit: ToolDescriptor = {
   name: "kit_delete",
   title: "Delete Kit",
   description:
-    "Hard-delete a listing (204). PERMANENT — destroys its download history and stats; kit_unpublish is the reversible alternative. Workers installed from it are untouched. The second call is a 404. Requires the publishKits scope." +
+    "Hard-delete a listing (204). PERMANENT; kit_unpublish is the reversible alternative. Workers installed from it are untouched. The second call is a 404. Requires the publishKits scope." +
     NEW_SCOPE_NOTE,
   auth: "manager",
   method: "delete",

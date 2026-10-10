@@ -1,9 +1,9 @@
 // The public kits-directory tools: anonymous, read-only catalog tools over the
-// public directory API. Nine tools rather than one per REST endpoint — the about read
+// public directory API. Eight tools rather than one per REST endpoint — the about read
 // (what WorkerKit is and when an agent should reach for it), one vocabulary
-// call, one search, one dossier, one stats read, one publisher profile, and the
-// three authoring reads (the guide, the permission vocabulary an author needs,
-// and the explorer of what each app lets a worker do).
+// call, one search, one dossier, one publisher profile, and the three authoring
+// reads (the guide, the permission vocabulary an author needs, and the explorer
+// of what each app lets a worker do).
 //
 // The upstream surface is already agent-shaped (always-anonymous, no
 // viewer-scoped fields, opt-in skill-resource bodies, composed overview), so
@@ -156,7 +156,7 @@ const searchKits: ToolDescriptor = {
   name: "kits_search",
   title: "Search Kits",
   description:
-    "Search and browse the public WorkerKit kits directory. A kit is a pre-built AI worker template — a job instruction (on a decision kit, a routing table; on an Action kit, selected app tools and no model) plus exact, pre-scoped app permissions (and often schedules) — that a human installs as a working AI worker in one click. All filters AND together; every value is optional (omit everything to browse the whole catalog). Returns {items, totalCount, page, pageSize}; each card: slug (the key for kit_get), name, jobSentence (what the worker does, one line), publisherName/publisherSlug/isOfficialPublisher/verificationTier, apps (app codes it uses) + categorySlots (capability slots where the installer picks the app, e.g. Slack vs Teams), categories, triggerModes, downloadCount, starCount, modelScores (publisher-declared 0-100 fit per model, best first) + recommendedModel, modelType ('language' | 'decision' | 'hybrid' | 'none' — see the filter), isProtected (publisher withholds the instruction TEXT; the kit still fully works — not a red flag), isFeatured, publishedAt. An empty result is not an error — see the footer it returns; valid category/app/appCategory/model filter values come from directory_overview. Kit page for humans: https://workerkit.ai/kit/{slug}." +
+    "Search and browse the public WorkerKit kits directory. A kit is a pre-built AI worker template — a job instruction (on a decision kit, a routing table; on an Action kit, selected app tools and no model) plus exact, pre-scoped app permissions (and often schedules) — that a human installs as a working AI worker in one click. All filters AND together; every value is optional (omit everything to browse the whole catalog). Returns {items, totalCount, page, pageSize}; each card: slug (the key for kit_get), name, jobSentence (what the worker does, one line), publisherName/publisherSlug/isOfficialPublisher/verificationTier, apps (app codes it uses) + categorySlots (capability slots where the installer picks the app, e.g. Slack vs Teams), categories, triggerModes, starCount, modelScores (publisher-declared 0-100 fit per model, best first) + recommendedModel, modelType ('language' | 'decision' | 'hybrid' | 'none' — see the filter), isProtected (publisher withholds the instruction TEXT; the kit still fully works — not a red flag), isFeatured, publishedAt. An empty result is not an error — see the footer it returns; valid category/app/appCategory/model filter values come from directory_overview. Kit page for humans: https://workerkit.ai/kit/{slug}." +
     DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
@@ -209,7 +209,7 @@ const getKit: ToolDescriptor = {
   name: "kit_get",
   title: "Get Kit",
   description:
-    "One kit's full public dossier — what a human, or an agent advising one, evaluates before installing. Fields: description + appDescriptions (the author's per-app / per-tool notes); modelType ('none' exposes actionSpec with selected tools and no reasoning model; 'hybrid' combines classification and an instruction; 'language', the default, or 'decision'); instructionContent — a language kit's job instruction VERBATIM, the core of what you are evaluating (empty when isProtected, with instructionLength still real; startCommand / endCommand / whenToUse are null on a protected kit, indistinguishable from 'none'); on a DECISION kit evaluate decisionNarration instead (what it reads, the questions it asks each item, the rules that route them, what happens below the confidence floor — served on protected kits too) and decisionSetup (the questions its installer answers); permissionsManifest — the EXACT data access an install grants (per-app operations / fields / scopes; the numeric value is authoritative, names are display) — summarize THIS when asked what the kit can touch; requiredInputs + memorySetup — the install form (fields the kit needs, questions whose answers become the worker's memory); memoryProfile (stateless omits recent-run summaries; contextual includes bounded summaries; owner rules and injected facts apply in both) and selfFactsEnabled (permits unreviewed recall-only fact saves; later runs must search to use them); schedules / triggers / usageWindows; skillResources — reference docs the worker fetches on demand (key / kind / name always; description / contentLength unless protected; bodies via includeResourceBodies); hasExternalMcpShells — TRUE means installing creates an MCP gateway in the installer's account pointing at the publisher's own upstream URL (permissionsManifest.mcpServers.shells): surface it when recommending; scan — the security scan of the text being served: outcome 'cleared' or 'underReview' (both are live, installable listings — 'underReview' means a reviewer has not settled a raised check, never that the kit is unsafe), scannedAtUtc (null = published before the scanner existed, most of the catalog), checks (the families that ran on THIS kit — 'cleared' on ['static'] alone is weaker than on all three) and recommendation ('safe' | 'caution' | 'doNotInstall', the SCANNER's own advice, independent of outcome and possibly disagreeing with it: attribute it to SkillSpector, and read 'caution' as 'worth a look' — it is also emitted when the analysis was incomplete); scan is absent when there is nothing to report and never carries findings; modelScores (with notes), downloadCount / starCount, and pageUrl — the install page to hand to the human. 404 = no published kit with that slug." +
+    "One kit's full public dossier — what a human, or an agent advising one, evaluates before installing. Fields: description + appDescriptions (the author's per-app / per-tool notes); modelType ('none' exposes actionSpec with selected tools and no reasoning model; 'hybrid' combines classification and an instruction; 'language', the default, or 'decision'); instructionContent — a language kit's job instruction VERBATIM, the core of what you are evaluating (empty when isProtected, with instructionLength still real; startCommand / endCommand / whenToUse are null on a protected kit, indistinguishable from 'none'); on a DECISION kit evaluate decisionNarration instead (what it reads, the questions it asks each item, the rules that route them, what happens below the confidence floor — served on protected kits too) and decisionSetup (the questions its installer answers); permissionsManifest — the EXACT data access an install grants (per-app operations / fields / scopes; the numeric value is authoritative, names are display) — summarize THIS when asked what the kit can touch; requiredInputs + memorySetup — the install form (fields the kit needs, questions whose answers become the worker's memory); memoryProfile (stateless omits recent-run summaries; contextual includes bounded summaries; owner rules and injected facts apply in both) and selfFactsEnabled (permits unreviewed recall-only fact saves; later runs must search to use them); schedules / triggers / usageWindows; skillResources — reference docs the worker fetches on demand (key / kind / name always; description / contentLength unless protected; bodies via includeResourceBodies); hasExternalMcpShells — TRUE means installing creates an MCP gateway in the installer's account pointing at the publisher's own upstream URL (permissionsManifest.mcpServers.shells): surface it when recommending; scan — the security scan of the text being served: outcome 'cleared' or 'underReview' (both are live, installable listings — 'underReview' means a reviewer has not settled a raised check, never that the kit is unsafe), scannedAtUtc (null = published before the scanner existed, most of the catalog), checks (the families that ran on THIS kit — 'cleared' on ['static'] alone is weaker than on all three) and recommendation ('safe' | 'caution' | 'doNotInstall', the SCANNER's own advice, independent of outcome and possibly disagreeing with it: attribute it to SkillSpector, and read 'caution' as 'worth a look' — it is also emitted when the analysis was incomplete); scan is absent when there is nothing to report and never carries findings; modelScores (with notes), starCount, and pageUrl — the install page to hand to the human. 404 = no published kit with that slug." +
     DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
@@ -229,27 +229,11 @@ const getKit: ToolDescriptor = {
   footer: kitDetailFooter,
 };
 
-const getKitStats: ToolDescriptor = {
-  name: "kit_stats",
-  title: "Get Kit Stats",
-  description:
-    "One kit's adoption over time: downloadCount (lifetime installs), dailyTrend (per-day installs over the trailing 30 days, UTC — sparse, omitted days are 0), lifetimeTrend (the whole history in at most 52 Monday-aligned buckets; buckets widen for older kits; counts sum to downloadCount). Use it to compare traction between shortlisted kits or to tell 'popular lately' from 'popular once' — the cards' downloadCount alone cannot." +
-    DIRECTORY_NOTE,
-  auth: "anonymous",
-  method: "get",
-  schema: {
-    slug: z.string().min(1).describe(SLUG_HINT),
-  },
-  path: (params) => `${API}/kits/${encodeURIComponent(String(params.slug))}/stats`,
-  paramFilter: () => ({}),
-  annotations: READ_ONLY,
-};
-
 const getPublisher: ToolDescriptor = {
   name: "publisher_get",
   title: "Get Publisher",
   description:
-    "A kit publisher's public profile + their published kits — the 'who is behind this?' trust check. Returns {publisher, kits, pageUrl}: publisher has name, isOfficial (published by WorkerKit itself), verification handles (xHandle → x.com/{handle}, gitHubHandle → github.com/{handle}, linkedInUrl), description, createDate (member since), kitCount and totalDownloads (published kits only); kits is the same paginated card list kits_search returns, scoped to this publisher. 404 = unknown slug OR a publisher with nothing currently published." +
+    "A kit publisher's public profile + their published kits — the 'who is behind this?' trust check. Returns {publisher, kits, pageUrl}: publisher has name, isOfficial (published by WorkerKit itself), verification handles (xHandle → x.com/{handle}, gitHubHandle → github.com/{handle}, linkedInUrl), description, createDate (member since), kitCount (published kits only); kits is the same paginated card list kits_search returns, scoped to this publisher. 404 = unknown slug OR a publisher with nothing currently published." +
     DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
@@ -355,7 +339,6 @@ export const directoryDescriptors: readonly ToolDescriptor[] = [
   directoryOverview,
   searchKits,
   getKit,
-  getKitStats,
   getPublisher,
   kitAuthoringGuide,
   kitVocabulary,
