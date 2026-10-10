@@ -42,6 +42,7 @@ export const actionDescriptors: readonly ToolDescriptor[] = [
       requestId: z.string().min(1).max(128)
         .describe("Your idempotency key for this creation. Repeat it only with the identical body, to recover a timed-out call's result; a different body under the same requestId is 409 request_conflict."),
       name: z.string().min(1).max(100).describe("Name for the new worker and its private kit."),
+      timeZoneId: z.string().trim().min(1).max(64).optional().describe("The worker's timezone, as an IANA id such as America/New_York. Ask the worker creator for it if it is not already known; never guess it from connected calendars or the server's clock. Omitted means UTC."),
       app: z.string().min(1).max(128).optional()
         .describe("The app whose default tools are copied when actionSpec is omitted, exactly as action_worker_options apps[].code lists it. Omit for Slack."),
       slackConnectionId: z.number().int().positive().optional()

@@ -43,6 +43,9 @@ try {
       assert.ok(byName('app_github_accounts'));
       assert.ok(byName('app_github_repos'));
       assert.ok(byName('app_github_branches'));
+      assert.ok(byName('support_request_create'));
+      assert.ok(byName('worker_timezone_set'));
+      assert.ok(byName('kit_install').schema.timeZoneId);
       assert.equal(new Set(allDescriptors.map(d => d.name)).size, allDescriptors.length);
       await new WorkerKitClient({ baseUrl: 'https://api.workerkit.ai' }).close();
     `], { cwd: consumer, stdio: "inherit" });

@@ -1,4 +1,4 @@
-// The 95 authenticated fleet-management tools, as pure descriptors. The
+// The 97 authenticated fleet-management tools, as pure descriptors. The
 // descriptions ARE the product surface: they are served verbatim to MCP
 // clients (and any future CLI help), so every contract nuance an agent must
 // not get wrong is taught here.
@@ -8,6 +8,7 @@ import { appDiscoveryDescriptors } from "./app-discovery.js";
 import { compactDecisionReceipt } from "./decision-receipt.js";
 import { createDecisionWorker } from "./decision-authoring.js";
 import { onboardingDescriptors } from "./onboarding.js";
+import { supportDescriptors } from "./support.js";
 import { z } from "../zod.js";
 import { CREATE, DELETE, READ_ONLY, TRIGGER, UPDATE, type ToolDescriptor } from "./types.js";
 
@@ -527,6 +528,22 @@ const deleteMemoryItem: ToolDescriptor = {
 
 // ─── Schedules ──────────────────────────────────────────────────────────────
 
+const setWorkerTimeZone: ToolDescriptor = {
+  name: "worker_timezone_set",
+  title: "Set Worker Timezone",
+  description:
+    "Set the worker's own timezone. It decides the worker's local dates, the local times in its app results (calendar events, emails and other apps) and the times in the reports it writes. Use the owner's intended zone, for example America/New_York for Eastern time. Recomputes the next run of every daily schedule that follows the worker; explicit schedule timezone overrides remain unchanged, and a schedule's timezone never changes the worker's. Reports already saved keep their times. Requires the manageSchedules scope. Returns timeZoneId, effectiveTimeZoneId and schedules.",
+  auth: "manager",
+  method: "put",
+  schema: {
+    tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
+    timeZoneId: z.string().max(64).nullable().describe("IANA timezone, such as America/New_York. Required: send null or an empty string to choose UTC."),
+  },
+  path: (params) => `${API}/${params.tokenId}/timezone`,
+  bodyBuilder: (params) => ({ timeZoneId: params.timeZoneId }),
+  annotations: UPDATE,
+};
+
 const listSchedules: ToolDescriptor = {
   name: "schedules_list",
   title: "List Schedules",
@@ -557,12 +574,19 @@ const SCHEDULE_GATE_HINT =
 const SCHEDULE_OVERLAP_NOTE =
   " A schedule never overlaps itself: a fire that finds any run of the worker in flight lands as a Skipped receipt (skipReason ConcurrencyLimit) whatever the plan's per-worker concurrency allows — space the schedule wider than a run takes. Runs started on demand may run alongside a scheduled one, up to the plan's limit.";
 
+// A schedule's zone and the worker's zone are separate settings. Taught on both
+// schedule writes, so an agent fixing a report's times does not reach for the
+// schedule: that only moves when it fires.
+const SCHEDULE_ZONE_NOTE =
+  " A schedule's own timeZoneId only decides when that schedule fires: the worker's local dates and reports follow the worker's timezone, which worker_timezone_set changes.";
+
 const createSchedule: ToolDescriptor = {
   name: "schedule_create",
   title: "Create Schedule",
   description:
     "Create a schedule for the worker. Per-type required fields: " + SCHEDULE_TYPE_HINT +
-    " Omit timeZoneId to follow the worker's own time zone (the normal case). An Action worker (modelType none) takes no schedules: it is called, never run. Requires the manageSchedules scope." +
+    " Omit timeZoneId to follow the worker's own time zone (the normal case)." + SCHEDULE_ZONE_NOTE +
+    " An Action worker (modelType none) takes no schedules: it is called, never run. Requires the manageSchedules scope." +
     SCHEDULE_GATE_HINT +
     SCHEDULE_OVERLAP_NOTE,
   auth: "manager",
@@ -602,7 +626,8 @@ const updateSchedule: ToolDescriptor = {
   name: "schedule_update",
   title: "Update Schedule",
   description:
-    "Edit a schedule (partial — omitted fields stay unchanged; timeZoneId='' clears the override so the schedule follows the worker's zone again). nextRunUtc is recomputed on every edit. Per-type field rules: " +
+    "Edit a schedule (partial — omitted fields stay unchanged; timeZoneId='' clears the override so the schedule follows the worker's zone again). nextRunUtc is recomputed on every edit." +
+    SCHEDULE_ZONE_NOTE + " Per-type field rules: " +
     SCHEDULE_TYPE_HINT + " Requires manageSchedules." + SCHEDULE_GATE_HINT + SCHEDULE_OVERLAP_NOTE,
   auth: "manager",
   method: "patch",
@@ -1083,6 +1108,9 @@ const kitInstall: ToolDescriptor = {
     avatar: z.string().max(40).optional().describe(
       "Avatar slug for the new worker. Omit for the default."
     ),
+    timeZoneId: z.string().trim().min(1).max(64).optional().describe(
+      "The worker's timezone, as an IANA id such as America/New_York: it decides the worker's local dates and reports, and is set before the kit's schedules are created. Ask the worker creator for it if it is not already known; never guess it from connected calendars or the server's clock. Omitted means UTC. install.effectiveTimeZoneId in the response is the zone applied."
+    ),
     slackConnectionId: z.number().int().positive().optional().describe("Action kits: pin a Slack bot from actionConnections in the install preview. No model or deployment is needed."),
     githubSelection: GITHUB_SELECTION.optional().describe(
       "Explicit GitHub targets for the new worker. Discover them with app_github_accounts, app_github_repos and app_github_branches (discoverAppResources scope). connectionId also appears as githubAccounts[].id in kit_install_preview. Use repositoryMode 'selected' with 1-500 stable repositoryIds for a specific job. 'all' includes future repositories granted to that account: choose it only when intended. accounts:[] leaves setup for later. Required for a GitHub kit when the key has discoverAppResources; legacy keys retain the single-account fallback. Discovery and branch inputs do not grant extra access."
@@ -1123,6 +1151,7 @@ const kitInstall: ToolDescriptor = {
     operatorId: params.operatorId,
     title: params.title,
     avatar: params.avatar,
+    timeZoneId: params.timeZoneId,
     githubSelection: params.githubSelection,
     categoryChoices: params.categoryChoices,
     inputs: params.inputs,
@@ -1522,7 +1551,7 @@ const getWorkerPermissions: ToolDescriptor = {
   name: "worker_permissions_get",
   title: "Get Worker Permissions",
   description:
-    "What the worker may touch, in the kit-authoring vocabulary: apps[] ({code, operations, visibleFields, allowAll, writeEnabled, providers, …} — the same shape a kit's content.apps takes), categorySlots[], contactAllowAll, blockedSenderCategories, timeframePastDays / timeframeFutureDays, maxChildTokens, and ruleCounts (per rule table, PRESENCE only — rule values never leave the worker). Read-only: permissions are never written through this surface; they change through a kit (kit_publish private, then kit_install) or in the dashboard. ruleCounts decides between the two ways to multiply a worker: worker_clone carries the rules, kit_publish from sourceWorkerId never does — so a worker with rules would install MORE permissively as a kit than it runs today. Requires the readWorkers scope.",
+    "What the worker may touch, in the kit-authoring vocabulary: apps[] ({code, operations, visibleFields, allowAll, writeEnabled, providers, …} — the same shape a kit's content.apps takes), categorySlots[], contactAllowAll, blockedSenderCategories, timeframePastDays / timeframeFutureDays, maxChildTokens, and ruleCounts (per rule table, PRESENCE only — rule values never leave the worker). Read-only: no tool changes a worker's permissions. To add an app or an operation, tell the user what to switch on under the worker's Apps & access on the dashboard, then read this again to confirm the change. A new worker with different permissions comes from a kit instead (kit_publish private, then kit_install). ruleCounts decides between the two ways to multiply a worker: worker_clone carries the rules, kit_publish from sourceWorkerId never does — so a worker with rules would install MORE permissively as a kit than it runs today. Requires the readWorkers scope.",
   auth: "manager",
   method: "get",
   schema: {
@@ -2094,6 +2123,7 @@ const deleteMcpServer: ToolDescriptor = {
 export const manageDescriptors: readonly ToolDescriptor[] = [
   ...appDiscoveryDescriptors,
   ...onboardingDescriptors,
+  ...supportDescriptors,
   createDecisionWorker,
   ...actionDescriptors,
   setWorkerDecision,
@@ -2119,6 +2149,7 @@ export const manageDescriptors: readonly ToolDescriptor[] = [
   addMemoryItem,
   updateMemoryItem,
   deleteMemoryItem,
+  setWorkerTimeZone,
   listSchedules,
   createSchedule,
   updateSchedule,

@@ -6,6 +6,19 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.14] - 2026-10-09
+
+### Added
+
+- `worker_timezone_set` sets a worker's own timezone, which its local dates, the local times in its app results and the times in its reports follow. It recomputes the daily schedules that follow the worker, leaves schedules that have their own timezone unchanged, and needs the `manageSchedules` scope.
+- `kit_install`, `decision_worker_create` and `action_worker_create` take `timeZoneId` to set the new worker's timezone, and tell the agent to ask the worker's creator for it rather than guess it from connected calendars. Omitted, the worker uses UTC.
+- `support_request_create` contacts WorkerKit support on the user's behalf about an error the agent cannot fix, a bug, an app WorkerKit does not offer yet, or a general question, and returns a `PE-XXXXXX` reference. It needs no scope, but the key must belong to an active user of the account, who receives the reply by email. WorkerKit keys and bearer tokens in the subject and message are redacted before the request leaves the process.
+
+### Changed
+
+- `schedule_create` and `schedule_update` say that a schedule's own timezone only decides when it fires, and point to `worker_timezone_set` for the worker's timezone.
+- `worker_permissions_get` says that no tool changes a worker's permissions: the agent tells the user what to switch on under the worker's Apps & access on the dashboard, then reads the permissions again to confirm.
+
 ## [0.3.13] - 2026-10-08
 
 ### Changed

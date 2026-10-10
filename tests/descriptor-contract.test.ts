@@ -11,7 +11,7 @@ import {
   type ToolDescriptor,
 } from "../src/index.js";
 
-// The wire contract, pinned per descriptor: for all 104 tools, executeTool
+// The wire contract, pinned per descriptor: for all 106 tools, executeTool
 // against a recording fake client must produce exactly the {method, path,
 // query/opts, body} the live server produces today. Expected values are
 // derived from the server suite's manage-tools/directory tests so the two
@@ -68,12 +68,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 95 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
-    expect(manageDescriptors).toHaveLength(95);
+  it("ships exactly 97 manager + 9 anonymous descriptors, names unique, byName agrees", () => {
+    expect(manageDescriptors).toHaveLength(97);
     expect(directoryDescriptors).toHaveLength(9);
-    expect(allDescriptors).toHaveLength(104);
+    expect(allDescriptors).toHaveLength(106);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(104);
+    expect(new Set(names).size).toBe(106);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -82,7 +82,7 @@ describe("registry", () => {
     for (const descriptor of directoryDescriptors) expect(descriptor.auth).toBe("anonymous");
   });
 
-  it("pins {auth, method} for every one of the 104 descriptors", () => {
+  it("pins {auth, method} for every one of the 106 descriptors", () => {
     // The full name → auth/method table. A new/renamed tool or a changed verb
     // must show up here explicitly — no descriptor ships with an unpinned method.
     expect(
@@ -101,6 +101,7 @@ describe("registry", () => {
         "wallet_get manager get",
         "wallet_checkout_create manager post",
         "wallet_checkout_get manager get",
+        "support_request_create manager post",
         "key_info manager get",
         "workers_list manager get",
         "worker_get manager get",
@@ -123,6 +124,7 @@ describe("registry", () => {
         "memory_add manager post",
         "memory_update manager patch",
         "memory_delete manager delete",
+        "worker_timezone_set manager put",
         "schedules_list manager get",
         "schedule_create manager post",
         "schedule_update manager patch",

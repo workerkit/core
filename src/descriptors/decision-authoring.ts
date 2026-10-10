@@ -21,6 +21,7 @@ export const createDecisionWorker: ToolDescriptor = {
   schema: {
     requestId: z.string().min(1).max(128).regex(/^[!-~]+$/).describe("Unique creation id. Reuse with the same body on retries; new id creates a new worker."),
     name: z.string().min(1).max(100),
+    timeZoneId: z.string().trim().min(1).max(64).optional().describe("The worker's timezone, as an IANA id such as America/New_York. Ask the worker creator for it if it is not already known; never guess it from connected calendars or the server's clock. Omitted means UTC."),
     source: z.object({
       recipe: z.enum(["email-previews", "calendar-events", "sheets-rows"]),
       args: z.record(z.unknown()).optional().describe("Arguments from the discovered recipe's argsSchema. No placeholders. Sheets requires fileId, range and columns."),
