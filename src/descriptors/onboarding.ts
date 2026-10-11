@@ -1,8 +1,9 @@
+// Generated from the backend agent contract. Edit the backend source and re-import; do not edit here.
 import { z } from "../zod.js";
-import { READ_ONLY, type ToolDescriptor } from "./types.js";
+import { defineTool, READ_ONLY, type ToolDescriptor } from "./types.js";
 
 export const onboardingDescriptors: readonly ToolDescriptor[] = [
-  {
+  defineTool({
     name: "onboarding_get",
     title: "Check onboarding requirements",
     auth: "manager",
@@ -12,9 +13,9 @@ export const onboardingDescriptors: readonly ToolDescriptor[] = [
       provider: z.string().max(40).optional().describe("Optional model provider to check."),
     },
     annotations: READ_ONLY,
-    description: "Read this credential’s scopes/expiry, account model-funding requirements and human-approved spendPolicy. The policy counts settled model cost plus BYOK fees and outstanding reservations: headroom is maxUsdPerDay minus spentTodayUsd minus reservedTodayUsd (monthly: maxUsdPerMonth minus spentThisMonthUsd minus reservedMonthUsd). Completion replaces the hold with receipt cost. Active holds cross UTC boundaries; interrupted runs with unknown cost retain their original-window hold. Use dayResetsAtUtc, monthResetsAtUtc and serverTimeUtc. Older responses without spent/reset fields counted cumulative reservations. No additional scope required. Agents cannot raise this ceiling; it applies to scheduled and manual runs. A refusal carries skipReason FleetSpendCap and errorCode human_spend_ceiling; fleet_spend_cap identifies the separately editable fleet budget. If humanActionRequired is true, show the returned setup URL. The user enters provider keys on WorkerKit, never in chat. BYOK can still require wallet credits for platform fees and metered apps. After funding, check worker readiness, deploy and run; runtime guards remain authoritative.",
-  },
-  {
+    description: "Read this credential’s scopes/expiry, account model-funding requirements and human-approved spendPolicy. The policy counts settled model cost plus BYOK fees and outstanding reservations: headroom is maxUsdPerDay minus spentTodayUsd minus reservedTodayUsd (monthly: maxUsdPerMonth minus spentThisMonthUsd minus reservedMonthUsd). Completion replaces the hold with receipt cost. Active holds cross UTC boundaries; interrupted runs with unknown cost retain their original-window hold. Use dayResetsAtUtc, monthResetsAtUtc and serverTimeUtc. Older responses without spent/reset fields counted cumulative reservations. {{scope}} Agents cannot raise this ceiling; it applies to scheduled and manual runs. A refusal carries skipReason FleetSpendCap and errorCode human_spend_ceiling; fleet_spend_cap identifies the separately editable fleet budget. If humanActionRequired is true, show the returned setup URL. The user enters provider keys on WorkerKit, never in chat. BYOK can still require wallet credits for platform fees and metered apps. After funding, check worker readiness, deploy and run; runtime guards remain authoritative.",
+  }),
+  defineTool({
     name: "wallet_get",
     title: "Read wallet",
     auth: "manager",
@@ -22,9 +23,9 @@ export const onboardingDescriptors: readonly ToolDescriptor[] = [
     path: "/api/manage/wallet",
     schema: {},
     annotations: READ_ONLY,
-    description: "Read spendable wallet balance and checkout fee/amount limits. Requires readWallet. A wallet balance is not evidence that a particular checkout was credited; use wallet_checkout_get for that.",
-  },
-  {
+    description: "Read spendable wallet balance and checkout fee/amount limits. {{scope}} A wallet balance is not evidence that a particular checkout was credited; use wallet_checkout_get for that.",
+  }),
+  defineTool({
     name: "wallet_checkout_create",
     title: "Request wallet funding",
     auth: "manager",
@@ -39,9 +40,9 @@ export const onboardingDescriptors: readonly ToolDescriptor[] = [
     bodyBuilder: (params) => ({ amountUsd: params.amountUsd }),
     headerBuilder: (params) => ({ "Idempotency-Key": String(params.idempotencyKey) }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-    description: "Create a Stripe Checkout link for a specific wallet credit purchase. Requires requestWalletTopUp. Show the credit, fee and total and ask the user to open checkout and confirm payment. Never ask for card details or charge a saved card. Poll wallet_checkout_get after payment; only credited confirms funds reached the ledger. Reuse idempotencyKey for retries, never a different amount.",
-  },
-  {
+    description: "Create a Stripe Checkout link for a specific wallet credit purchase. {{scope}} Show the credit, fee and total and ask the user to open checkout and confirm payment. Never ask for card details or charge a saved card. Poll wallet_checkout_get after payment; only credited confirms funds reached the ledger. Reuse idempotencyKey for retries, never a different amount.",
+  }),
+  defineTool({
     name: "wallet_checkout_get",
     title: "Check wallet payment",
     auth: "manager",
@@ -50,6 +51,6 @@ export const onboardingDescriptors: readonly ToolDescriptor[] = [
     paramFilter: () => ({}),
     schema: { sessionId: z.string().min(1).max(255) },
     annotations: READ_ONLY,
-    description: "Check pending, paid_pending_credit, credited or expired checkout status. Requires readWallet, or requestWalletTopUp for a checkout created by this credential. Only credited means the wallet ledger has committed. Wait at least five seconds between checks; stop on credited or expired and use bounded waits for delayed payment.",
-  },
+    description: "Check pending, paid_pending_credit, credited or expired checkout status. {{scope}} Only credited means the wallet ledger has committed. Wait at least five seconds between checks; stop on credited or expired and use bounded waits for delayed payment.",
+  }),
 ];

@@ -14,6 +14,12 @@ Deliberately MCP-free: descriptors carry MCP-shaped annotations and zod schemas,
 but nothing here depends on an MCP SDK, so an MCP server, a CLI, or docs tooling
 can all consume the same registry.
 
+## Contract ownership
+
+Tool definitions, schemas, HTTP mappings and agent guidance are authored by the WorkerKit backend. Core distributes a generated, versioned copy to MCP and CLI consumers. Live catalog and account data comes from backend endpoints.
+
+To update the contract, import the reviewed backend `Data/AgentContract.json` with `npm run import:contract -- <artifact-path>`. Commit the pinned artifact and generated modules together. `npm run check:contract` and every build reject manual changes to generated modules. Core owns the HTTP client and execution engine; tool-specific behavior is part of the backend contract.
+
 ## Install
 
 ```bash
@@ -166,7 +172,21 @@ npm ci
 npm test            # descriptor-contract suite
 npm run typecheck
 npm run build
+npm run check:descriptions # rebuild, then report size and guidance warnings
 ```
+
+`check:release` includes the fresh description report. For the complete per-tool
+report, run `npm run build` then `node scripts/check-descriptions.mjs --json`.
+An optional `--baseline <report.json>` compares reports made with the same
+projection and tokenizer. This is a transport-neutral core projection; the MCP
+repository separately checks real SDK metadata and reviewed growth budgets.
+Size, uppercase and unattributed repeated-clause findings are review warnings,
+never truncation instructions. Generated shared guidance is attributed by its
+canonical identifier; other repeated text still needs contextual review.
+Publishing also runs `check:provenance`: the pinned backend artifact must name
+its reviewed 40-character source commit and match the generated modules.
+Local `working-tree-*` artifacts remain usable for development and package
+smoke tests, but cannot pass this publication gate.
 
 Issues and pull requests are welcome. Every tool is a declarative `ToolDescriptor`;
 the descriptor-contract tests pin each one's exact wire call, so behavior changes

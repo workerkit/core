@@ -1,3 +1,4 @@
+// Generated from the backend agent contract. Edit the backend source and re-import; do not edit here.
 // Single-instance guarantee: every descriptor schema is built from THIS zod
 // export. Consumers (MCP servers, CLIs) that need to introspect or extend the
 // schemas should import z from here rather than depending on zod directly, so

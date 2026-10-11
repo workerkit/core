@@ -1,3 +1,4 @@
+// Generated from the backend agent contract. Edit the backend source and re-import; do not edit here.
 // The public kits-directory tools: anonymous, read-only catalog tools over the
 // public directory API. Eight tools rather than one per REST endpoint — the about read
 // (what WorkerKit is and when an agent should reach for it), one vocabulary
@@ -29,13 +30,13 @@ const SLUG_HINT = "The kit's URL slug, as returned by kits_search (slug).";
 // Appended to every tool: the two facts an agent must never get wrong on a
 // public mount — no auth exists, and installing is out of its reach.
 const DIRECTORY_NOTE =
-  " Public and anonymous: results are identical for everyone, and nothing here installs or publishes. Install: a signed-in human on the kit's workerkit.ai page (offer the URL), or an agent with the installKits scope via kit_install_preview / kit_install on the WorkerKit Manager mount (/workers). Author: kit_authoring_guide + kit_vocabulary here, then kit_validate / kit_publish on /workers (publishKits scope).";
+  " Public and anonymous, identical for everyone; reads only. Install: signed-in human at pageUrl, or kit_install_preview/kit_install on Manager /workers (installKits).";
 
 // The two authoring reads share one framing: they are what an agent reads BEFORE
 // writing a kit for the manager surface, and they are anonymous so it can draft
 // before it holds any credential.
 const AUTHORING_NOTE =
-  " Public and anonymous, identical for everyone. The kit is validated and published on the WorkerKit Manager mount (/workers): kit_validate (every section's verdict at once), then kit_publish — publishKits scope. Publish PRIVATE first (visibility 'private'): a private kit installs only on its own account (a signed-in human on its workerkit.ai page, or an agent via kit_install), which is also how a worker is created from scratch. A worker uses only apps CONNECTED on its operator (apps_list; app_connect for credential-based ones). An app the platform lacks is added as the account's own custom MCP app: mcp_server_create (credential included), mcp_server_set_tools, then content.mcpServers in the kit.";
+  " Public and anonymous. On Manager /workers: kit_validate checks all sections, then kit_publish (publishKits). Publish PRIVATE first: only this account can install it via a signed-in human at pageUrl or kit_install, also the create-from-scratch path. Workers need apps connected on their operator (apps_list/app_connect). Add unsupported apps via mcp_server_create (credential), mcp_server_set_tools, then content.mcpServers.";
 
 // ─── Pure data mappers + footers (presentation data, not ToolResult assembly) ─
 
@@ -143,8 +144,7 @@ const directoryOverview: ToolDescriptor = {
   name: "directory_overview",
   title: "Directory Overview",
   description:
-    "The directory's vocabulary and scale in one call — call this FIRST when you need valid kits_search filter values or a map of what WorkerKit covers. Returns: kitCount (published kits right now); categories grouped as jobFamilies/roles/industries ({slug, name} — slugs feed the category/industry filters); apps ({code, name, categoryCode?, installable} — codes feed the app filter; installable:false means kits can show the app but an install cannot carry it); appCategories ({code, name, members:[{code, name, appCode}]} — codes feed the appCategory filter; members are what an installer picks between, e.g. Slack vs Teams); models ({model, normalized, kitCount} — pass normalized or any substring as the model filter); modelTypes ({code, name, summary} — 'none' (Action) | 'language' | 'decision' | 'hybrid', each with its one-line summary; codes feed the modelType filter); sortOptions; triggerModes. Vocabulary only — it lists no kits: for 'what is popular', use kits_search with the default downloads sort. Kit pages for humans follow https://workerkit.ai/kit/{slug}." +
-    DIRECTORY_NOTE,
+    "Read directory vocabulary before choosing kits_search filters. kitCount counts published kits; categories.jobFamilies/roles/industries supplies slug/name for category/industry. apps code/name/categoryCode/installable supplies app (installable:false can appear in kits but cannot be installed). appCategories code/name/members[{code,name,appCode}] supplies appCategory and installer choices (e.g. Slack/Teams). models model/normalized/kitCount supplies model (normalized or substring). modelTypes code/name/summary supplies none(Action)|language|decision|hybrid. Also sortOptions/triggerModes. No kits here: for popularity use kits_search's default downloads sort. Human pages: https://workerkit.ai/kit/{slug}." + DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
   schema: {},
@@ -156,8 +156,7 @@ const searchKits: ToolDescriptor = {
   name: "kits_search",
   title: "Search Kits",
   description:
-    "Search and browse the public WorkerKit kits directory. A kit is a pre-built AI worker template — a job instruction (on a decision kit, a routing table; on an Action kit, selected app tools and no model) plus exact, pre-scoped app permissions (and often schedules) — that a human installs as a working AI worker in one click. All filters AND together; every value is optional (omit everything to browse the whole catalog). Returns {items, totalCount, page, pageSize}; each card: slug (the key for kit_get), name, jobSentence (what the worker does, one line), publisherName/publisherSlug/isOfficialPublisher/verificationTier, apps (app codes it uses) + categorySlots (capability slots where the installer picks the app, e.g. Slack vs Teams), categories, triggerModes, starCount, modelScores (publisher-declared 0-100 fit per model, best first) + recommendedModel, modelType ('language' | 'decision' | 'hybrid' | 'none' — see the filter), isProtected (publisher withholds the instruction TEXT; the kit still fully works — not a red flag), isFeatured, publishedAt. An empty result is not an error — see the footer it returns; valid category/app/appCategory/model filter values come from directory_overview. Kit page for humans: https://workerkit.ai/kit/{slug}." +
-    DIRECTORY_NOTE,
+    "Search public worker templates: instructions, decision routing or Action tools, with pre-scoped app permissions and often schedules. All optional filters AND; omit to browse. Returns {items,totalCount,page,pageSize}. Cards: slug(kit_get key), name/jobSentence, publisherName/publisherSlug/isOfficialPublisher/verificationTier, apps/categorySlots(installer chooses member), categories/triggerModes, starCount, modelScores(publisher-declared 0-100 fit, best first)/recommendedModel, modelType(language|decision|hybrid|none), isProtected,isFeatured,publishedAt. Protected instruction TEXT is intentionally withheld; kit still works, not a red flag. Empty is not an error; read its footer and directory_overview for valid filters. Human page: https://workerkit.ai/kit/{slug}." + DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
   schema: {
@@ -174,7 +173,7 @@ const searchKits: ToolDescriptor = {
       "Exact app code the kit must use, e.g. 'email', 'slack', 'crm'. Valid codes: directory_overview → apps."
     ),
     appCategory: z.string().optional().describe(
-      "Capability-category code, e.g. 'team-collaboration': matches kits that define that install-time slot OR pin one of its member apps — broader than the app filter. Unknown codes error (the error names the fix). Valid codes: directory_overview → appCategories."
+      "Capability category from directory_overview.appCategories: matches an install slot OR a pinned member app, broader than app. Unknown code errors with the fix."
     ),
     model: z.string().max(80).optional().describe(
       "Substring match on a scored model name, e.g. 'sonnet' or 'gpt'. Valid names: directory_overview → models."
@@ -183,7 +182,7 @@ const searchKits: ToolDescriptor = {
       "How the kit's worker runs: onDemand (a human or agent triggers it), scheduled (ships recurring schedules), event (webhook-triggered)."
     ),
     modelType: z.enum(["none", "language", "decision", "hybrid"]).optional().describe(
-      "none = Action worker executing selected app tools without a reasoning model; hybrid = bounded classification followed by one language-model agent; language = an instruction the installer runs on a model of their choice; decision = a routing table the decision model applies per item (triage, sorting, labelling, filtering — no instruction, no model to pick). Omit for all worker types."
+      "Worker type: none=direct Action tools; language=prose with installer-chosen model; decision=per-item routing without prose/model choice; hybrid=bounded classification then one language agent. Omit for all."
     ),
     publisher: z.string().optional().describe("Publisher slug (publisherSlug on any card) — that publisher's kits only."),
     sort: z.enum(["downloads", "new", "name", "stars"]).default("downloads").describe(
@@ -209,8 +208,7 @@ const getKit: ToolDescriptor = {
   name: "kit_get",
   title: "Get Kit",
   description:
-    "One kit's full public dossier — what a human, or an agent advising one, evaluates before installing. Fields: description + appDescriptions (the author's per-app / per-tool notes); modelType ('none' exposes actionSpec with selected tools and no reasoning model; 'hybrid' combines classification and an instruction; 'language', the default, or 'decision'); instructionContent — a language kit's job instruction VERBATIM, the core of what you are evaluating (empty when isProtected, with instructionLength still real; startCommand / endCommand / whenToUse are null on a protected kit, indistinguishable from 'none'); on a DECISION kit evaluate decisionNarration instead (what it reads, the questions it asks each item, the rules that route them, what happens below the confidence floor — served on protected kits too) and decisionSetup (the questions its installer answers); permissionsManifest — the EXACT data access an install grants (per-app operations / fields / scopes; the numeric value is authoritative, names are display) — summarize THIS when asked what the kit can touch; requiredInputs + memorySetup — the install form (fields the kit needs, questions whose answers become the worker's memory); memoryProfile (stateless omits recent-run summaries; contextual includes bounded summaries; owner rules and injected facts apply in both) and selfFactsEnabled (permits unreviewed recall-only fact saves; later runs must search to use them); schedules / triggers / usageWindows; skillResources — reference docs the worker fetches on demand (key / kind / name always; description / contentLength unless protected; bodies via includeResourceBodies); hasExternalMcpShells — TRUE means installing creates an MCP gateway in the installer's account pointing at the publisher's own upstream URL (permissionsManifest.mcpServers.shells): surface it when recommending; scan — the security scan of the text being served: outcome 'cleared' or 'underReview' (both are live, installable listings — 'underReview' means a reviewer has not settled a raised check, never that the kit is unsafe), scannedAtUtc (null = published before the scanner existed, most of the catalog), checks (the families that ran on THIS kit — 'cleared' on ['static'] alone is weaker than on all three) and recommendation ('safe' | 'caution' | 'doNotInstall', the SCANNER's own advice, independent of outcome and possibly disagreeing with it: attribute it to SkillSpector, and read 'caution' as 'worth a look' — it is also emitted when the analysis was incomplete); scan is absent when there is nothing to report and never carries findings; modelScores (with notes), starCount, and pageUrl — the install page to hand to the human. 404 = no published kit with that slug." +
-    DIRECTORY_NOTE,
+    "Inspect a kit before installation: description/appDescriptions (author app/tool notes), modelType, exact permissions, content and setup. none exposes actionSpec without a model; hybrid combines prose/classification; language is default. instructionContent is verbatim prose, empty if isProtected while instructionLength remains real; protected startCommand/endCommand/whenToUse are null, indistinguishable from absent. For decision, evaluate decisionNarration (sources/questions/routes/confidence fallback, also served when protected) and decisionSetup. permissionsManifest is EXACT installed access: operations/fields/scopes; numeric values are authoritative, names display-only. Summarize this for access questions. requiredInputs/memorySetup is the install form. memoryProfile stateless omits recent-run summaries, contextual includes bounded summaries; owner rules/injected facts apply to both. selfFactsEnabled permits unreviewed recall-only saves that later runs must search to use. Also schedules/triggers/usageWindows, modelScores with notes/starCount/pageUrl. skillResources always has key/kind/name; description/contentLength withheld when protected; includeResourceBodies fetches bodies. Surface hasExternalMcpShells when recommending: install creates account gateways to publisher URLs in permissionsManifest.mcpServers.shells. scan.outcome cleared|underReview are BOTH live/installable; underReview is an unsettled raised check, not unsafe. scannedAtUtc:null means pre-scanner publication. checks lists families run; static-only cleared is weaker than all three. Attribute recommendation safe|caution|doNotInstall to SkillSpector; independent of outcome and may disagree. caution means worth reviewing, including incomplete analysis. scan is absent with nothing to report, never includes findings. 404:no published kit for slug." + DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
   schema: {
@@ -233,8 +231,7 @@ const getPublisher: ToolDescriptor = {
   name: "publisher_get",
   title: "Get Publisher",
   description:
-    "A kit publisher's public profile + their published kits — the 'who is behind this?' trust check. Returns {publisher, kits, pageUrl}: publisher has name, isOfficial (published by WorkerKit itself), verification handles (xHandle → x.com/{handle}, gitHubHandle → github.com/{handle}, linkedInUrl), description, createDate (member since), kitCount (published kits only); kits is the same paginated card list kits_search returns, scoped to this publisher. 404 = unknown slug OR a publisher with nothing currently published." +
-    DIRECTORY_NOTE,
+    "Inspect a publisher and its published kits for the 'who is behind this?' check. Returns {publisher,kits,pageUrl}. publisher: name,isOfficial(WorkerKit), xHandle(x.com),gitHubHandle(github.com),linkedInUrl,description,createDate(member since),kitCount(published only). kits uses the paginated kits_search card shape, scoped to this publisher. 404:unknown publisher or none currently published." + DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
   schema: {
@@ -261,7 +258,7 @@ const kitAuthoringGuide: ToolDescriptor = {
   name: "kit_authoring_guide",
   title: "Kit Authoring Guide",
   description:
-    "Author a WorkerKit kit, decision worker or Action worker. For classification, scoring, filtering or triage, read section decision: source recipes, typed questions, creation examples and result handling. For explicit app operations with no model (an Action worker, modelType none), index and schema cover it; the shortest path is action_worker_options then action_worker_create on the WorkerKit Manager mount. For full kit authoring read index, then schema; read state for WorkerKit-owned Records, memory options and context hygiene. Fetch other sections as needed. Returns one markdown section and a table of contents. Live source capabilities are on kit_app_tools; exact permission keys are on kit_vocabulary." + DIRECTORY_NOTE,
+    "Read kit authoring guidance one Markdown section at a time, with table of contents. Classification/scoring/filtering/triage: decision has recipes, typed questions, creation examples/results. Action(modelType none): index/schema; quickest create path is action_worker_options then action_worker_create on Manager. Full kit authoring: index, then schema/rules; state covers Records, memory and context hygiene; fetch other sections as needed. Live sources:kit_app_tools; exact permission keys:kit_vocabulary. On Manager /workers, kit_validate the exact body then kit_publish (publishKits). Publish private, install and prove a run (Action:tool call) before public promotion with kit_replace." + DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
   schema: {
@@ -277,8 +274,7 @@ const kitVocabulary: ToolDescriptor = {
   name: "kit_vocabulary",
   title: "Kit Authoring Vocabulary",
   description:
-    "The live vocabulary a kit's permission manifest accepts — read it before writing content.apps / content.categorySlots / categorySlugs: every key is validated strictly and there is no 'all' shorthand. Without app: apps[] (per surface: code, name, summary, operations = the tool KEYS you grant, fields, and every axis it supports — readOperations, masterAccessLevels, writableFields, providers, channels, objectTypes, scopePolicies, contentTypeScopes, capabilities, supportsAllowAll, supportsWriteEnabled, subApps, installable), concreteApps[] (vendor tiles such as Gmail, Monday or Google Sheets, kind standalone | provider | slotMember | subApp — how each lands in content), appCategories[] (the capability slots: members, labelAlias, genericName), categories {jobFamilies, roles, industries} (the ONLY valid categorySlugs), models[], mcpApps[] (platform MCP apps a kit binds via content.mcpServers — id is the gatewayId, tools[].toolId the toolIds; the account's OWN servers are mcp_servers_list on /workers) and note. With app=<code>: that ONE surface as {app, vendors, tools, note}, tools being what an installed worker sees — each {name (cite it in the instruction), description, readOnly, argsSchema (exact input JSON Schema), decisionSource (documented result mapping where available), requires (grant one of these keys under operations to get the tool)}; toolsNote replaces tools where no catalog covers the surface. The full read is large: take it once per authoring task, then per-app reads for the surfaces you use; kit_app_tools is the one-call view of what every app can do. Unknown app = 400 naming every valid code." +
-    AUTHORING_NOTE,
+    "Read the exact live keys before writing content.apps/categorySlots/categorySlugs; strict validation, no 'all' shorthand. Without app: apps[] code/name/summary, operations(tool KEYS), fields, supported axes(readOperations,masterAccessLevels,writableFields,providers,channels,objectTypes,scopePolicies,contentTypeScopes,capabilities,supportsAllowAll,supportsWriteEnabled,subApps,installable); concreteApps[] vendor tiles with standalone|provider|slotMember|subApp kind and content mapping; appCategories[] members/labelAlias/genericName; categories.jobFamilies/roles/industries(the valid categorySlugs); models; mcpApps(id=gatewayId,tools[].toolId=toolIds); note. Own MCP servers: mcp_servers_list on Manager. With app: {app,vendors,tools,note}; tools describes installed-worker tools: name(use in prose),description,readOnly,argsSchema,decisionSource result mapping where known,requires(grant one listed operations key). toolsNote replaces an unavailable catalog. Full response is large: read once/task, then per-app; kit_app_tools explores all app capabilities in one call. Unknown app:400 with valid codes." + AUTHORING_NOTE,
   auth: "anonymous",
   method: "get",
   schema: {
@@ -294,7 +290,7 @@ const kitAppTools: ToolDescriptor = {
   name: "kit_app_tools",
   title: "Kit App Tools",
   description:
-    "Discover what connected-app tools a worker can use. For classification, categorization, scoring or triage, set purpose:decision: returns convenience source recipes, evidence fields, argument schemas, read permissions, limitations and a ready-to-edit decision_worker_create example. Optional app narrows results (email, calendar, drive for decision recipes). Public capabilities only; apps_list checks account connections. Without purpose returns every catalogued app tool with argsSchema and permission keys, plus decisionSource result mappings where documented. Recipes are not a source allowlist: for arbitrary decision sources or routed actions omit purpose, read argsSchema and the documented result mapping, then kit_validate → kit_publish(private) → kit_install. For an Action worker, whose caller invokes app tools directly with no model, action_worker_options lists the tools it can expose. Validation checks structure/grants, not live access. Use kit_vocabulary for detailed permission axes." + DIRECTORY_NOTE,
+    "Discover app tool capabilities. purpose:decision returns convenience source recipes, evidence fields, argument schemas, read permissions, limits and editable decision_worker_create examples; app narrows email/calendar/drive recipes. Public capability data only; apps_list checks account connections. Without purpose: catalog tools with argsSchema/permission keys and documented decisionSource mappings. Recipes are not an allowlist: arbitrary sources/routed actions use the general catalog, argsSchema/result mapping, then kit_validate -> kit_publish(private) -> kit_install. Validation checks structure/grants, not live access. Action tool selection: action_worker_options. Detailed permission axes:kit_vocabulary." + DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
   schema: {
@@ -320,7 +316,7 @@ const workerkitAbout: ToolDescriptor = {
   name: "workerkit_about",
   title: "About WorkerKit",
   description:
-    "What WorkerKit does and when to use it. Workers run classification, scoring, triage, monitoring and other jobs with their own app access, budget and receipts; an Action worker instead exposes selected app tools with no model, which you call with exact inputs (action_worker_options, action_worker_create, worker_tool_call). Read one section: index, why, operate, access, cost or start. For a custom classifier start with kit_app_tools(purpose:decision) and kit_authoring_guide(section:decision), then decision_worker_create. Existing templates are on kits_search; use modelType:decision for classifiers. Account scopes are on key_info." + DIRECTORY_NOTE,
+    "Read what WorkerKit does and when to use it: index/why/operate/access/cost/start. Workers classify, score, triage, monitor and run jobs with app grants, budgets and receipts. Action(modelType none) exposes tools without a model: action_worker_options/create then worker_tool_call. For custom classification: kit_app_tools(purpose:decision), kit_authoring_guide(section:decision), decision_worker_create. Reuse templates via kits_search(modelType:decision); key_info shows account scopes." + DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
   schema: {

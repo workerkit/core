@@ -1,3 +1,4 @@
+// Generated from the backend agent contract. Edit the backend source and re-import; do not edit here.
 // Path-based log redaction cannot reach substrings inside free-text fields
 // (upstream error bodies, error messages, stack traces). Run those through this
 // scrubber before logging. The pe_ pattern covers every WorkerKit key family

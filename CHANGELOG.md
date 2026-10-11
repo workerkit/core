@@ -6,6 +6,19 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.16] - 2026-10-11
+
+### Changed
+
+- Tool definitions, schemas, HTTP adapters and guidance are generated from the backend-owned agent contract, with hash and source parity checks. Exports include backend contract provenance.
+- Shorter tool text preserves existing names, input/output schemas and annotations. Shared instructions and explicit scope metadata are available to consumers.
+- Manager scope prose renders from the same metadata, including checkout ownership and deployment implied by kit-install settings.
+- Decision and hybrid receipt guidance also accompanies classified `worker_run` and `run_get` results in human-readable output. Raw response data is unchanged.
+
+### Fixed
+
+- Guidance keeps restricted-key 404 results uncertain, distinguishes human-approved spending ceilings from fleet budgets, and explains hybrid wallet charges and linked follow-on runs accurately.
+
 ## [0.3.15] - 2026-10-10
 
 ### Added

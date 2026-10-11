@@ -17,6 +17,11 @@ export type {
 } from "./client.js";
 
 export * from "./descriptors/index.js";
+export * from "./scopes.js";
+export * from "./guidance.js";
+export * from "./instructions.js";
+export * from "./profiles.js";
+export { backendContractProvenance } from "./contract-provenance.js";
 
 export { executeTool } from "./execute.js";
 export type { ExecuteToolOpts } from "./execute.js";

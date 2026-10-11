@@ -1,3 +1,4 @@
+// Generated from the backend agent contract. Edit the backend source and re-import; do not edit here.
 export {
   CREATE,
   DELETE,

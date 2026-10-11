@@ -1,6 +1,6 @@
 {
   "name": "@workerkit/core",
-  "version": "0.3.15",
+  "version": "0.3.16",
   "description": "API client and tool descriptors for WorkerKit: manage AI workers and browse the public kits directory",
   "type": "module",
   "license": "MIT",
@@ -45,13 +45,18 @@
     "access": "public"
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist', {recursive:true, force:true})\" && tsc -p tsconfig.json",
+    "build": "npm run check:contract && node -e \"require('node:fs').rmSync('dist', {recursive:true, force:true})\" && tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
-    "prepublishOnly": "npm run check:release && npm run typecheck && npm run build && npm test",
-    "check:release": "node scripts/check-release.mjs",
+    "prepublishOnly": "npm run check:provenance && npm run check:release && npm run typecheck && npm run build && npm test && npm run test:hygiene",
+    "check:release": "node scripts/check-release.mjs && npm run check:descriptions",
+    "check:descriptions": "npm run build && node scripts/check-descriptions.mjs",
+    "check:provenance": "node scripts/check-release-provenance.mjs",
     "test:package": "node scripts/test-package.mjs",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "test:hygiene": "node --test scripts/hygiene-checks.mjs",
+    "import:contract": "node scripts/import-backend-contract.mjs",
+    "check:contract": "node scripts/import-backend-contract.mjs --check"
   },
   "engines": {
     "node": ">=22.0.0"
@@ -62,7 +67,9 @@
   },
   "devDependencies": {
     "@types/node": "22.20.1",
+    "js-tiktoken": "1.0.21",
     "typescript": "5.9.3",
-    "vitest": "4.1.11"
+    "vitest": "4.1.11",
+    "zod-to-json-schema": "3.25.2"
   }
 }

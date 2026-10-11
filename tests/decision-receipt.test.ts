@@ -29,3 +29,11 @@ it("preserves exact hybrid judgments, unknown action evidence and committed char
   expect(compactDecisionReceipt({ kind: "hybrid", contentWithheld: true, decision: null, agent: null })).toEqual(
     { kind: "hybrid", contentWithheld: true, decision: null, agent: null });
 });
+
+it.each(["run_get", "worker_run"])("%s delivers classified interpretation only when applicable", name => {
+  const footer = byName(name)!.footer!;
+  expect(footer({kind:"hybrid",contentWithheld:true,decision:null},{})).toContain("contentWithheld means unreadable");
+  expect(footer({decision:{source:{complete:false}}},{})).toContain("unknown coverage is not complete");
+  for (const ordinary of [null, [], {status:"Running"}, {modelType:"language",decision:null}])
+    expect(footer(ordinary,{})).toBeUndefined();
+});

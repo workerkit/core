@@ -23,9 +23,10 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm run check:release
       - run: npm ci
+      - run: npm run check:release
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
+      - run: npm run test:hygiene
       - run: npm run test:package

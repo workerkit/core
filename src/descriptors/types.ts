@@ -1,4 +1,17 @@
+// Generated from the backend agent contract. Edit the backend source and re-import; do not edit here.
 import { z } from "../zod.js";
+import { renderScopeRequirement, scopeRequirementFor } from "../scopes.js";
+
+/** Fill one scope placement from authorization metadata, preserving local consequences. */
+export function defineTool(descriptor: ToolDescriptor): ToolDescriptor {
+  const marker = "{{scope}}";
+  if (descriptor.description.split(marker).length !== 2)
+    throw new Error("Expected exactly one scope placement: " + descriptor.name);
+  return {
+    ...descriptor,
+    description: descriptor.description.replace(marker, renderScopeRequirement(scopeRequirementFor(descriptor.name), descriptor.auth === "anonymous")),
+  };
+}
 
 export type HttpMethod = "get" | "post" | "patch" | "put" | "delete";
 

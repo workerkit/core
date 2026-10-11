@@ -1,3 +1,4 @@
+// Generated from the backend agent contract. Edit the backend source and re-import; do not edit here.
 /** Keep exact decision rows once in LLM-facing receipts. The API remains unchanged. */
 export function compactDecisionReceipt(data: unknown): unknown {
   if (!isObject(data) || !isObject(data.decision) || !Array.isArray(data.decision.decisions)

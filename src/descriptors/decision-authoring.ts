@@ -1,5 +1,6 @@
+// Generated from the backend agent contract. Edit the backend source and re-import; do not edit here.
 import { z } from "../zod.js";
-import { CREATE, type ToolDescriptor } from "./types.js";
+import { defineTool, CREATE, type ToolDescriptor } from "./types.js";
 
 const key = z.string().regex(/^(?=.{1,40}$)[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/);
 const base = { key, instructions: z.string().min(1).max(4000) };
@@ -12,10 +13,10 @@ export const decisionQuestion = z.discriminatedUnion("type", [
   z.object({ ...base, type: z.literal("noul"), trueMeaning: z.string().max(200).optional(), falseMeaning: z.string().max(200).optional() }).strict(),
 ]);
 
-export const createDecisionWorker: ToolDescriptor = {
+export const createDecisionWorker: ToolDescriptor = defineTool({
   name: "decision_worker_create",
   title: "Create Decision Worker",
-  description: "Create a reusable classifier to categorize, score, filter or triage connected data. First discover source recipes with kit_app_tools(purpose:'decision'); kit_authoring_guide(section:'decision') has examples. Creates a private kit and worker atomically; optionally deploys, never runs. Questions and source mappings compile deterministically into the ordinary decision specification. Source filters do not narrow the recipe's read permissions. Requires createWorkers (a key limited to selected workers gains the worker it creates), plus manageDeployments when deploy:true. Reuse requestId and the identical body to recover the original receipt after a timeout; changed body returns 409. Returns tokenId for lifecycle commands, stable workerId, kitSlug, readiness, deployment/error and exact nextCall arguments. Follow nextCall, then worker_run/run_get. A deployment error means the worker already exists. Choice adds unclear automatically; setup answers adjust categories/levels later. Creation returns no worker API secret. For arbitrary decision sources or routed actions use kit_validate → kit_publish(private) → kit_install.",
+  description: "Create a reusable classifier to categorize, score, filter or triage connected data. First discover source recipes with kit_app_tools(purpose:'decision'); kit_authoring_guide(section:'decision') has examples. Creates a private kit and worker atomically; optionally deploys, never runs. Questions and source mappings compile deterministically into the ordinary decision specification. Source filters do not narrow the recipe's read permissions. {{scope}} A key limited to selected workers gains the worker it creates. Reuse requestId and the identical body to recover the original receipt after a timeout; changed body returns 409. Returns tokenId for lifecycle commands, stable workerId, kitSlug, readiness, deployment/error and exact nextCall arguments. Follow nextCall, then worker_run/run_get. A deployment error means the worker already exists. Choice adds unclear automatically; setup answers adjust categories/levels later. Creation returns no worker API secret. For arbitrary decision sources or routed actions use kit_validate → kit_publish(private) → kit_install.",
   auth: "manager", method: "post", path: "/api/manage/decision-workers",
   strictInput: true,
   schema: {
@@ -43,4 +44,4 @@ export const createDecisionWorker: ToolDescriptor = {
     nextCall: z.object({ tool: z.string(), arguments: z.record(z.unknown()) }),
   },
   annotations: { ...CREATE, idempotentHint: true },
-};
+});
