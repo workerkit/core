@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { validateContract, syncContract } from "./import-backend-contract.mjs";
-import { allDescriptors, instructionsByProfile, restInstructions, restTransportGuidance, scopeRequirementFor, renderScopeRequirement, backendContractProvenance } from "../dist/index.js";
+import { allDescriptors, instructionsByProfile, restInstructions, restTransportGuidance, scopeRequirementFor, renderScopeRequirement, backendContractProvenance, toolDocumentation } from "../dist/index.js";
 import { measureSurface } from "./measure-descriptions.mjs";
 
 const contract = JSON.parse(readFileSync(new URL("../contracts/backend-agent-contract.json", import.meta.url), "utf8"));
@@ -19,7 +19,11 @@ test("generated core modules and built exports match the pinned backend contract
   for (const operation of contract.operations) {
     const tool = allDescriptors.find(d=>d.name === operation.tool);
     assert.equal(tool.title, operation.title);
-    assert.equal(tool.description, operation.description);
+    assert.equal(toolDocumentation(tool), operation.description);
+    if (tool.resultDescription) {
+      assert.ok(tool.footer, tool.name + ": result guidance has a delivery path");
+      assert.equal(tool.footer({kind:"hybrid",contentWithheld:true}, {}), tool.resultDescription);
+    }
     assert.equal(tool.method, operation.method);
     assert.deepEqual(scopeRequirementFor(tool.name), operation.scopes);
     assert.equal(operation.scopeDescription, renderScopeRequirement(scopeRequirementFor(tool.name), tool.auth === "anonymous"));

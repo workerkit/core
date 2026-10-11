@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { byName } from "../src/index.js";
+import { byName, toolDocumentation } from "../src/index.js";
 import { compactDecisionReceipt } from "../src/descriptors/decision-receipt.js";
 
 it.each(["run_get", "worker_run"])("%s projects exact decision rows once without mutating the API receipt", name => {
@@ -31,7 +31,12 @@ it("preserves exact hybrid judgments, unknown action evidence and committed char
 });
 
 it.each(["run_get", "worker_run"])("%s delivers classified interpretation only when applicable", name => {
-  const footer = byName(name)!.footer!;
+  const descriptor = byName(name)!;
+  const footer = descriptor.footer!;
+  expect(toolDocumentation(descriptor)).toContain("walletChargeUsd is committed wallet cost");
+  expect(toolDocumentation(descriptor)).toContain("unknown coverage is not complete");
+  expect(descriptor.description).toMatch(/never automatically repeat an uncertain write/i);
+  expect(descriptor.description).toContain("manual/on-demand only");
   expect(footer({kind:"hybrid",contentWithheld:true,decision:null},{})).toContain("contentWithheld means unreadable");
   expect(footer({decision:{source:{complete:false}}},{})).toContain("unknown coverage is not complete");
   for (const ordinary of [null, [], {status:"Running"}, {modelType:"language",decision:null}])

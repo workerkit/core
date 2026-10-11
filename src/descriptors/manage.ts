@@ -47,8 +47,9 @@ const DECISION_BLOCK_NOTE =
 const HYBRID_NOTE =
   " Hybrid classifies a bounded window, then runs one language agent on the selected batch, returning one receipt: decision judgments/calls, agent status/reason/tool-confirmed action references, digestStructured summary. usageBreakdown separates decision/language list costs, calls, models and funding; walletChargeUsd is committed wallet cost, including classification on BYOK. No matches: zero language calls, floor or fee. 2xx without an action result ID is unknown. Manual/on-demand only; never automatically repeat an uncertain write.";
 
-// Some clients truncate long tool descriptions. Repeat the authored receipt
-// interpretation only with classified results, where the model needs it.
+// Result interpretation is authored once and delivered with classified receipts.
+// REST and offline help retain it even when callers choose raw JSON.
+const CLASSIFIED_RESULT_DESCRIPTION = (DECISION_BLOCK_NOTE + HYBRID_NOTE).trim();
 // Raw HTTP and CLI --json bodies remain unchanged; MCP/plain CLI render footers.
 function classifiedReceiptGuidance(data: unknown): string | undefined {
   if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
@@ -56,7 +57,7 @@ function classifiedReceiptGuidance(data: unknown): string | undefined {
   if ((receipt.decision && typeof receipt.decision === "object") ||
       receipt.kind === "decision" || receipt.kind === "hybrid" ||
       receipt.modelType === "decision" || receipt.modelType === "hybrid")
-    return (DECISION_BLOCK_NOTE + HYBRID_NOTE).trim();
+    return CLASSIFIED_RESULT_DESCRIPTION;
   return undefined;
 }
 
@@ -154,12 +155,13 @@ const runWorker: ToolDescriptor = defineTool({
   strictInput: true,
   mapData: compactDecisionReceipt,
   footer: classifiedReceiptGuidance,
+  resultDescription: CLASSIFIED_RESULT_DESCRIPTION,
   name: "worker_run",
   requestTimeoutMs: (params) => typeof params.waitSeconds === "number"
     ? Math.max(30_000, (Math.min(55, Math.max(0, params.waitSeconds)) + 5) * 1000) : undefined,
   title: "Run Worker Now",
   description:
-    "Run now, API-triggered and attributed to the key's minter. Never automatically repeat an uncertain write. {{scope}} Read the receipt's status: policy refusals (kill switch, usage window, run/spend cap, concurrency, wallet, readiness, BYOK key) return HTTP 200 Skipped with skipReason, a normal receipt, not an error. " + guidance.spendCap + " Most clear with reset/capacity/funding. ByokKeyInvalid/byok_key_invalid with errorDetail:null requires the human to re-add/remove the ACCOUNT's rejected provider key; never retry. Structural refusals: 409 not_deployed/deployment_paused/deployment_suspended/model_unavailable; 404 unreachable worker. Error envelope: {error,message}, with snake_case code in error. prompt overrides this run; omit for standing instructions. Account-wide limit: 30 triggers/min across keys/clients; other accounts do not affect you. On 429 honor Retry-After. run_bulk fans out to 20 workers on a separate window. In-flight worker limit: Free 5/Pro 20/Team 50; excess yields Skipped/ConcurrencyLimit. Language accepts prompt/modelSlug; decision accepts sourceArgs/answers/maxItems instead (wrong kind: 409 not_language_worker/not_decision_worker). Hybrid accepts both. Action (modelType none): 400 action_worker_requires_invoke; use worker_tool_call." + DECISION_BLOCK_NOTE + HYBRID_NOTE + RUNTIME_NOTE,
+    "Run now, API-triggered and attributed to the key's minter. Never automatically repeat an uncertain write. {{scope}} Read the receipt's status: policy refusals (kill switch, usage window, run/spend cap, concurrency, wallet, readiness, BYOK key) return HTTP 200 Skipped with skipReason, a normal receipt, not an error. " + guidance.spendCap + " Most clear with reset/capacity/funding. ByokKeyInvalid/byok_key_invalid with errorDetail:null requires the human to re-add/remove the ACCOUNT's rejected provider key; never retry. Structural refusals: 409 not_deployed/deployment_paused/deployment_suspended/model_unavailable; 404 unreachable worker. Error envelope: {error,message}, with snake_case code in error. prompt overrides this run; omit for standing instructions. Account-wide limit: 30 triggers/min across keys/clients; other accounts do not affect you. On 429 honor Retry-After. run_bulk fans out to 20 workers on a separate window. In-flight worker limit: Free 5/Pro 20/Team 50; excess yields Skipped/ConcurrencyLimit. Language accepts prompt/modelSlug; decision accepts sourceArgs/answers/maxItems instead (wrong kind: 409 not_language_worker/not_decision_worker). Hybrid accepts both: it classifies a bounded window then runs one language agent on selected items, returning one receipt; manual/on-demand only. Classified receipts include coverage and committed wallet cost; their interpretation accompanies the result. Action (modelType none): 400 action_worker_requires_invoke; use worker_tool_call." + RUNTIME_NOTE,
   auth: "manager",
   method: "post",
   schema: {
@@ -316,10 +318,11 @@ const listRuns: ToolDescriptor = defineTool({
 const getRun: ToolDescriptor = defineTool({
   mapData: compactDecisionReceipt,
   footer: classifiedReceiptGuidance,
+  resultDescription: CLASSIFIED_RESULT_DESCRIPTION,
   name: "run_get",
   title: "Get Run",
   description:
-    "Read a full run receipt. " + guidance.spendCap + " Fields: status, trigger, timings, token/cost metering, billingMode Platform|Byok, byokFeeUsd, finalDigest (worker report), runPrompt/runContext, in-flight liveness live|stalled/lastActivity, errorCode/errorDetail and issues. {{scope}} On BYOK, modelCostUsd is provider list price, not wallet charge. Parse footprint, turnsTimeline, issues and priceSnapshot: they are raw JSON strings. Grades: selfScore, selfScoreReason, ownerScore (set with run_score)." + SCORE_NOTE + DECISION_BLOCK_NOTE + HYBRID_NOTE + RUNTIME_NOTE,
+    "Read a full run receipt. " + guidance.spendCap + " Fields: status, trigger, timings, token/cost metering, billingMode Platform|Byok, byokFeeUsd, finalDigest (worker report), runPrompt/runContext, in-flight liveness live|stalled/lastActivity, errorCode/errorDetail and issues. {{scope}} On BYOK, modelCostUsd is provider list price, not wallet charge. Parse footprint, turnsTimeline, issues and priceSnapshot: they are raw JSON strings. Grades: selfScore, selfScoreReason, ownerScore (set with run_score)." + SCORE_NOTE + " Decision/hybrid receipts include classification, source coverage and committed wallet cost; interpretation accompanies the result. Hybrid runs are manual/on-demand only; never automatically repeat an uncertain write." + RUNTIME_NOTE,
   auth: "manager",
   method: "get",
   schema: {

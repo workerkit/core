@@ -4,6 +4,8 @@ import { renderScopeRequirement, scopeRequirementFor } from "../scopes.js";
 
 /** Fill one scope placement from authorization metadata, preserving local consequences. */
 export function defineTool(descriptor: ToolDescriptor): ToolDescriptor {
+  if (descriptor.resultDescription && !descriptor.footer)
+    throw new Error("Result-only guidance requires a result footer: " + descriptor.name);
   const marker = "{{scope}}";
   if (descriptor.description.split(marker).length !== 2)
     throw new Error("Expected exactly one scope placement: " + descriptor.name);
@@ -11,6 +13,11 @@ export function defineTool(descriptor: ToolDescriptor): ToolDescriptor {
     ...descriptor,
     description: descriptor.description.replace(marker, renderScopeRequirement(scopeRequirementFor(descriptor.name), descriptor.auth === "anonymous")),
   };
+}
+
+// Full offline/REST help includes result interpretation, even for raw JSON consumers.
+export function toolDocumentation(descriptor: ToolDescriptor): string {
+  return descriptor.description + (descriptor.resultDescription ? " " + descriptor.resultDescription : "");
 }
 
 export type HttpMethod = "get" | "post" | "patch" | "put" | "delete";
@@ -52,6 +59,9 @@ export interface ToolDescriptor {
   name: string;
   title: string;
   description: string;
+  /** Result-only interpretation delivered by footer; retained in full REST/CLI help.
+   * Never move required arguments, authority, side effects or pre-call choices here. */
+  resultDescription?: string;
   /** "manager" tools require a bearer; "anonymous" tools must never forward one. */
   auth: "manager" | "anonymous";
   method: HttpMethod;

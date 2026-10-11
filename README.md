@@ -20,6 +20,8 @@ Tool definitions, schemas, HTTP mappings and agent guidance are authored by the 
 
 To update the contract, import the reviewed backend `Data/AgentContract.json` with `npm run import:contract -- <artifact-path>`. Commit the pinned artifact and generated modules together. `npm run check:contract` and every build reject manual changes to generated modules. Core owns the HTTP client and execution engine; tool-specific behavior is part of the backend contract.
 
+Adapters advertise each descriptor's `description` and render its `footer` with applicable results. For full offline help or REST documentation, use `toolDocumentation(descriptor)`: it includes result interpretation without requiring an API call. Raw JSON response bodies remain unchanged.
+
 ## Install
 
 ```bash

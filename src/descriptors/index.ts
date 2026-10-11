@@ -35,3 +35,5 @@ const byNameIndex = new Map(allDescriptors.map((d) => [d.name, d]));
 export function byName(name: string): ToolDescriptor | undefined {
   return byNameIndex.get(name);
 }
+
+export { toolDocumentation } from "./types.js";

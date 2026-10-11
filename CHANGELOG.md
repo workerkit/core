@@ -13,7 +13,7 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 - Tool definitions, schemas, HTTP adapters and guidance are generated from the backend-owned agent contract, with hash and source parity checks. Exports include backend contract provenance.
 - Shorter tool text preserves existing names, input/output schemas and annotations. Shared instructions and explicit scope metadata are available to consumers.
 - Manager scope prose renders from the same metadata, including checkout ownership and deployment implied by kit-install settings.
-- Decision and hybrid receipt guidance also accompanies classified `worker_run` and `run_get` results in human-readable output. Raw response data is unchanged.
+- Detailed decision and hybrid interpretation accompanies classified `worker_run` and `run_get` results, reducing catalog repetition. `toolDocumentation` retains the full text for offline help and REST; pre-call warnings stay in tool descriptions. Raw response data is unchanged.
 
 ### Fixed
 
