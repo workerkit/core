@@ -40,6 +40,7 @@ export const instructionsByProfile = {
 // are not MCP initialization instructions and do not add to tools/list.
 export const restTransportGuidance = {
   workerId: "The worker: stable workerId GUID (preferred) or deprecated sequential numeric tokenId. Both are accepted. A 404 can mean nonexistent, another account or outside key selection; check key_info.",
+  runs_feed: "REST wait (0-60 seconds) long-polls until an account run is minted, starts or settles, or the deadline. Prefer one held fleet request over tight polling. A restricted key may wake for another worker, but its returned page stays restricted. At the concurrent-waiter cap it returns immediately. Supplying cursor ignores wait: backlog pages never wait. This wait input is REST-only.",
   memory_add_rule: "This REST operation adds a rule; kind is encoded in the route, not sent in the body.",
   memory_add_fact: "This REST operation adds a fact; kind is encoded in the route, not sent in the body.",
   managerKey: "Manager key. Minted once by an account admin at {appUrl}/fleet-access; sent as Authorization: Bearer pe_mgr_….",

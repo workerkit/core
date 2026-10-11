@@ -18,6 +18,7 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Guidance keeps restricted-key 404 results uncertain, distinguishes human-approved spending ceilings from fleet budgets, and explains hybrid wallet charges and linked follow-on runs accurately.
+- Restored model-alias resolution, classification wait restrictions, install-answer behavior, publisher bio limits and kit-edit/deletion consequences from the REST contract. REST-only long polling remains separate from MCP inputs.
 
 ## [0.3.15] - 2026-10-10
 

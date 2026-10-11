@@ -2,6 +2,6 @@
 export const backendContractProvenance = {
   "sourceRepository": "workerkit-backend",
   "contractVersion": "1.0.0",
-  "sourceRevision": "4afa5659d5e599139f90aff87594e1a578b63694",
-  "contentHash": "0107ec855e006e449cdc1b42f3c45bdebbbc867d9f9de7465ce94216cbf2d1fc"
+  "sourceRevision": "f8098a72b228f08b534078675e52bd98fc08c727",
+  "contentHash": "fbe58a77aef75008752c1a2bb67895aa4abb1a987b235902f44a2682676d871d"
 } as const;

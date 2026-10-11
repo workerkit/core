@@ -169,19 +169,19 @@ const runWorker: ToolDescriptor = defineTool({
     ),
     decisionProfileId: z.string().min(1).max(64).optional().describe(DECISION_PROFILE_HINT),
     modelSlug: z.string().max(64).optional().describe(
-      "Language and hybrid workers: one-off model override for this run (≤64 chars). Omit to use the worker's configured model."
+      "Language/hybrid only: catalog slug or reviewed family alias, resolved and checked for enabled provider/tier on THIS run. Never changes the stored deployment model. Omit to use it."
     ),
     sourceArgs: z.record(z.string(), z.unknown()).optional().describe(
       "Classification only: per-run overrides merged over saved source args, within worker grants. Plain object, no placeholders. Relative bounds (after:\"-14d\",endDate:\"+48h\") resolve when the platform reads; never calculate dates yourself."
     ),
     answers: z.record(z.string(), z.string()).optional().describe(
-      "Classification only: per-run answer overrides by key; never saved or shared with other callers. Omitted keys keep stored/default answers. Validated/bound like instruction_set; category collisions or ladders outside 2-10 levels return 400, not failed runs. Lists accept a JSON-array string or semicolon-separated rows."
+      "Classification only: per-run answer overrides by key; never saved or shared with other callers. Omitted or blank values keep stored/default answers. Validated/bound like instruction_set; category collisions or ladders outside 2-10 levels return 400, not failed runs. Lists accept a JSON-array string or semicolon-separated rows."
     ),
     maxItems: z.number().int().min(1).max(100000).optional().describe(
       "Workers with classification: judge at most this many items this run (never above the spec's own cap). ~20 reads as a table; omit for the spec's limit."
     ),
     waitSeconds: z.number().int().min(0).max(55).optional().describe(
-      "Wait for a settled receipt (useful for short decision runs). Omit for a newly minted receipt. If still non-terminal at the deadline, poll run_get."
+      "Decision/hybrid only (language:409 not_decision_worker): wait 0-55 seconds for settlement. Omit for a minted receipt. At deadline, a non-terminal receipt is normal: poll run_get. Without readRuns, contentWithheld:true still returns status/timings/money."
     ),
   },
   path: (params) => `${API}/${params.tokenId}/run`,
@@ -219,7 +219,7 @@ const runWorkersBulk: ToolDescriptor = defineTool({
             "What THIS worker should do on this run (≤8000 chars). Omit to run its standing instructions unchanged."
           ),
           modelSlug: z.string().max(64).optional().describe(
-            "One-off model override for this worker's run (≤64 chars). Omit to use its configured model."
+            "Language/hybrid only: catalog slug or reviewed family alias, resolved and checked for enabled provider/tier on THIS run. Never changes the stored deployment model. Omit to use it."
           ),
           decisionProfileId: runWorker.schema.decisionProfileId,
           sourceArgs: runWorker.schema.sourceArgs,
@@ -394,7 +394,7 @@ const answerRunQuestion: ToolDescriptor = defineTool({
   name: "run_answer",
   title: "Answer Run Question",
   description:
-    "Answer and start a linked FOLLOW-ON run, returning its receipt with a NEW runId. {{scope}} This starts paid work. Follow the chain: run_question on the parent has resumeRunId; the new receipt has parentRunId. Watch new id with run_get/run_events. Repeated answers normally return the original follow-on (idempotent). All run gates apply: HTTP 200 Skipped/skipReason is normal; a Skipped follow-on is NOT linked, so answer again only after its reason clears. At returned maxChainDepth (run_question), answer is recorded but 400 chain_limit is terminal on every retry; begin a fresh authorized run using what you learned. Concurrent second answer:409 answer_in_progress; reread parent's run_question for resumeRunId. Late answers after timeout still start a run. 404 not_found means no question; errors use {error,message} with snake_case code in error." + RUNTIME_NOTE,
+    "Answer and start a linked FOLLOW-ON run carrying your answer and prior run context, returning its receipt with a NEW runId. {{scope}} This starts paid work. Follow the chain: run_question on the parent has resumeRunId; the new receipt has parentRunId. Watch new id with run_get/run_events. Repeated answers normally return the original follow-on (idempotent). All run gates apply: HTTP 200 Skipped/skipReason is normal; a Skipped follow-on is NOT linked, so answer again only after its reason clears. At returned maxChainDepth (run_question), answer is recorded but 400 chain_limit is terminal on every retry; begin a fresh authorized run using what you learned. Concurrent second answer:409 answer_in_progress; reread parent's run_question for resumeRunId. Late answers after timeout still start a run. 404 not_found means no question; errors use {error,message} with snake_case code in error." + RUNTIME_NOTE,
   auth: "manager",
   method: "post",
   schema: {
@@ -906,7 +906,7 @@ const setInstruction: ToolDescriptor = defineTool({
   name: "instruction_set",
   title: "Set Instruction",
   description:
-    "Set prose content on language/hybrid, or classification answers on decision/hybrid. {{scope}} content and answers are mutually exclusive (400). content fully replaces prose and snapshots the old version when changed; omitted optional fields stay unchanged, empty string clears. Protected prose returns 403 OPERATION_NOT_ALLOWED: publisher-owned, never retry. answers changes saved setup used on the next run; protected kits hide raw specs, never setup questions, so answers remain editable. Action(modelType none) accepts neither; its owner edits selected tools in the dashboard.",
+    "Set prose content on language/hybrid, or classification answers on decision/hybrid. {{scope}} content and answers are mutually exclusive (400). content fully replaces prose and snapshots the old version when changed; omitted optional fields stay unchanged, empty string clears. Protected prose returns 403 OPERATION_NOT_ALLOWED: publisher-owned, never retry. answers changes saved setup used on the next run. There is no decision dry run: routing can act on every item; test with a small worker_run.maxItems. Protected kits hide raw specs, never setup questions, so answers remain editable. Action(modelType none) accepts neither; its owner edits selected tools in the dashboard.",
   auth: "manager",
   method: "put",
   schema: {
@@ -919,10 +919,10 @@ const setInstruction: ToolDescriptor = defineTool({
     whenToUse: z.string().max(500).optional().describe("Trigger text: when this worker should be used (≤500). Omit = unchanged; '' = clear."),
     description: z.string().max(2000).optional().describe("Longer display-only description (≤2000). Omit = unchanged; '' = clear."),
     memoryProfile: z.enum(["stateless", "contextual"]).optional().describe(
-      "Recent-run context: stateless omits summaries; contextual includes bounded summaries. Owner rules and injected facts apply in both; neither deletes saved facts or Records. Omit = unchanged."
+      "Recent-run context: stateless omits summaries; contextual includes bounded summaries. Owner rules and injected facts apply in both; neither deletes saved facts or Records. Omit = unchanged; a new instruction defaults to stateless."
     ),
     selfFactsEnabled: z.boolean().optional().describe(
-      "Permit unreviewed, recall-only fact saves through add_fact, subject to effective access. Independent of memoryProfile. Instructions must say what to save and when to retrieve it with search_facts. Omit = unchanged."
+      "Permit unreviewed, recall-only fact saves through add_fact, subject to effective access. Independent of memoryProfile. Instructions must say what to save and when to retrieve it with search_facts. Omit = unchanged; a new instruction defaults to false."
     ),
   },
   path: (params) => `${API}/${params.tokenId}/instruction`,
@@ -1105,18 +1105,18 @@ const kitInstall: ToolDescriptor = defineTool({
       "Name for the new worker (≤100 chars). Omit to use the kit's name."
     ),
     avatar: z.string().max(40).optional().describe(
-      "Avatar slug for the new worker. Omit for the default."
+      "Avatar slug for the new worker. Omit for General."
     ),
     timeZoneId: z.string().trim().min(1).max(64).optional().describe(
       "IANA timezone for local dates/reports, set before kit schedules. Ask the worker creator if unknown; never infer from calendars/server clock. Omitted means UTC. Response install.effectiveTimeZoneId confirms the applied zone."
     ),
-    slackConnectionId: z.number().int().positive().optional().describe("Action kits: pin a Slack bot from actionConnections in the install preview. No model or deployment is needed."),
+    slackConnectionId: z.number().int().positive().optional().describe("Action kits: pin a Slack bot from actionConnections in the install preview. A sole usable connection can be selected automatically; choose explicitly when several exist. No model/deployment."),
     githubSelection: GITHUB_SELECTION.optional().describe(
-      "GitHub targets from app_github_accounts/repos/branches (discoverAppResources); preview githubAccounts[].id is connectionId. For specific jobs use selected with 1-500 stable repositoryIds. all includes future granted repos: choose only intentionally. accounts:[] defers setup. Required on GitHub kits for keys with discoverAppResources; legacy keys keep single-account fallback. Discovery/branch inputs grant no access."
+      "GitHub targets from app_github_accounts/repos/branches (discoverAppResources); preview githubAccounts[].id is connectionId. For specific jobs use selected with 1-500 stable repositoryIds. all includes future granted repos: choose only intentionally. accounts:[] defers setup. Required on GitHub kits for keys with discoverAppResources; legacy keys keep single-account fallback. Discovery/branch inputs grant no access. These owner selections never enter a published kit manifest."
     ),
     categoryChoices: z.array(z.object({
       categoryCode: z.string().describe("The slot's categoryCode from the preview."),
-      memberCode: z.string().describe("The chosen member's code (e.g. 'gmail')."),
+      memberCode: z.string().describe("Member code (e.g. 'gmail'). Any member of the slot's category is accepted; one outside the author's shortlist uses an existing kit block for that app, otherwise safe defaults. Unknown category member:400."),
       resourceId: z.string().uuid().optional().describe(
         "For members with connectionProvider set: the identity to bind, from the preview's operatorResources."
       ),
@@ -1124,19 +1124,19 @@ const kitInstall: ToolDescriptor = defineTool({
       "One entry per categorySlots slot. Omitted slots resolve to the kit's first offered member on safe defaults."
     ),
     inputs: z.record(z.string(), z.string()).optional().describe(
-      "Answers to requiredInputs, keyed EXACTLY by each entry's key. Every key is mandatory; values are single-line, 1-200 chars."
+      "Answers to requiredInputs, keyed EXACTLY by each entry's key. Every key is mandatory; values are single-line, 1-200 chars. Matching normalizes case/spacing; use returned keys rather than relying on normalization."
     ),
     memoryAnswers: z.record(z.string(), z.string()).optional().describe(
-      "Answers to memorySetup questions by key. Entries with required:true are mandatory. Keep this separate from inputs — mixing the two maps is a 400."
+      "Answers to memorySetup by key, separate from inputs (mixing maps:400). Each answer creates an editable owner-authored rule/fact; omitted optional answers store nothing. Values are single-line; missing required/unknown keys or a composed memory line over 300 chars:400."
     ),
     decisionAnswers: z.record(z.string(), z.string()).optional().describe(
-      "Decision/hybrid setup answers by preview key: choice=option value; scale=stop label/value; list=newline/semicolon rows (max20, blank keeps built-in default); appPick=id or answer later with instruction_set. Text/rows max200 chars. Missing required answer without default:400."
+      "Decision/hybrid setup answers by preview key: choice=option value; scale=stop label/value; list=newline/semicolon rows (max20, blank keeps built-in default); appPick=id or answer later with instruction_set. Text/rows max200 chars. Missing required answer without default, unknown key or off-menu value:400 before creation. Deferred appPick keeps the worker blocked until answered."
     ),
     deploy: z.boolean().optional().describe(
       "Deploy as part of install (also needs manageDeployments). Otherwise no schedule fires and worker_run returns not_deployed. Omit for Action(modelType none), which is never deployed."
     ),
     deployment: z.object({
-      modelSlug: z.string().max(64).optional().describe("Model to deploy on, from models_list. Omit for the kit's recommended model."),
+      modelSlug: z.string().max(64).optional().describe("Model from models_list or a reviewed family alias; saved as its resolved concrete slug, not a subscription to upgrades. Omit for the kit's recommended model."),
       maxUsdPerRun: z.number().min(0.01).max(1000).optional().describe("Hard per-run ceiling in USD. Omit for the platform default."),
       maxUsdPerDay: z.number().min(0.01).max(10000).optional().describe("Per-day reserved-spend ceiling, at least maxUsdPerRun. Omit for the platform default."),
       thinking: z.string().max(16).optional().describe("Reasoning setting for the chosen model — see worker_deploy. Omit for 'default'."),
@@ -1283,7 +1283,7 @@ const getWorkerBudget: ToolDescriptor = defineTool({
   name: "budget_get",
   title: "Get Worker Budget",
   description:
-    "Read worker ceilings: maxUsdPerRun/maxUsdPerDay/maxRunsPerDay/maxConcurrentRuns, modelSlug, hasDeployment, workerId/tokenId. {{scope}} This scope is needed for reads as well as writes. Null maxRunsPerDay means PLATFORM DEFAULT, not unlimited. maxUsdPerRun is reserved from wallet at dispatch: balance must afford it; day cap counts reservations, not settled cost (four $0.50 reserves exhaust $2 even if each costs $0.01; a later gate skip refunds its reservation). Concurrency is plan-owned: Free 5/Pro 20/Team 50/Enterprise uncapped, no budget_set override; upgrade to raise it. It bounds on-demand/API/webhook runs; schedules never overlap their worker's in-flight run. hasDeployment:false explains zero dollar figures: no deployment, not a zero spending cap. Worker caps add together; fleet_budget_get controls aggregate exposure." + BUDGET_WINDOW_NOTE + NEW_SCOPE_NOTE,
+    "Read worker ceilings: maxUsdPerRun/maxUsdPerDay/maxRunsPerDay/maxConcurrentRuns, modelSlug, hasDeployment, workerId/tokenId. {{scope}} This scope is needed for reads as well as writes. Null maxRunsPerDay means PLATFORM DEFAULT, not unlimited. maxUsdPerRun is reserved from wallet at dispatch: balance must afford it (language BYOK reserves only its platform fee, possibly zero within the allowance). awaitInputTimeoutMinutes:null means questions wait indefinitely. Day cap counts reservations, not settled cost (four $0.50 reserves exhaust $2 even if each costs $0.01; a later gate skip refunds its reservation). Concurrency is plan-owned: Free 5/Pro 20/Team 50/Enterprise uncapped, no budget_set override; upgrade to raise it. It bounds on-demand/API/webhook runs; schedules never overlap their worker's in-flight run. hasDeployment:false explains zero dollar figures: no deployment, not a zero spending cap. Worker caps add together; fleet_budget_get controls aggregate exposure." + BUDGET_WINDOW_NOTE + NEW_SCOPE_NOTE,
   auth: "manager",
   method: "get",
   schema: {
@@ -1437,7 +1437,7 @@ const deployWorker: ToolDescriptor = defineTool({
     tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
     decisionProfileId: z.string().min(1).max(64).optional().describe(DECISION_PROFILE_HINT),
     modelSlug: z.string().max(64).optional().describe(
-      "Model to run on, from models_list (its slug field). Omit to take the kit's recommended model — 400 model_required when the kit named none."
+      "Catalog slug from models_list or a reviewed family alias. Saved as the resolved concrete slug, not a subscription to upgrades. Omit for the kit's recommended model; none:400 model_required."
     ),
     maxUsdPerRun: z.number().min(0.01).max(1000).optional().describe(
       "Hard per-run ceiling in USD, 0.01-1000 — also the amount reserved from the wallet at dispatch, so it is what a run must be able to AFFORD to start. Omit for the platform default."
@@ -1475,7 +1475,7 @@ const updateDeployment: ToolDescriptor = defineTool({
     tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
     decisionProfileId: z.string().min(1).max(64).optional().describe(DECISION_PROFILE_HINT),
     modelSlug: z.string().max(64).optional().describe(
-      "New model, from models_list. Omit to keep. Read the thinking interplay in the description before changing it."
+      "New catalog slug from models_list or reviewed family alias; saved as its resolved concrete slug. Omit to keep. Read the thinking interplay before changing it."
     ),
     maxUsdPerRun: z.number().min(0.01).max(1000).optional().describe(
       "New per-run ceiling in USD, 0.01-1000. Must stay at or below maxUsdPerDay. Omit to keep."
@@ -1484,7 +1484,7 @@ const updateDeployment: ToolDescriptor = defineTool({
       "New per-day reserved-spend ceiling, 0.01-10000. Must be at least maxUsdPerRun. Omit to keep."
     ),
     thinking: z.string().max(16).optional().describe(
-      "New reasoning setting for the CURRENT model: 'default', 'off', a token budget as a string ('1024'), or an effort word ('high'). Omit to keep."
+      "New reasoning setting for the chosen model (new modelSlug if supplied): 'default', 'off', a token budget as a string ('1024'), or an effort word ('high'). Omit to keep."
     ),
     transcriptRetention: z.string().max(16).optional().describe(
       "New transcript setting. Omit to keep."
@@ -1578,7 +1578,7 @@ const LISTING_SCHEMA = {
     "'private' (recommended first) = installable only by this account, no supply-chain scan; 'public' (default) = listed in the directory after the fail-closed scan."
   ),
   isProtected: z.boolean().optional().describe(
-    "true = installers get a working worker and the permission manifest but never the instruction text. Independent of visibility."
+    "true withholds instruction, run commands, whenToUse and reference bodies; installers keep a working worker and permissions. Independent of visibility; new publishes default false (unprotected)."
   ),
   publisherName: z.string().min(3).max(80).optional().describe(
     "Required on this account's FIRST publish only (creates the publisher profile; globally unique, 409 if taken). Ignored afterwards — rename with publisher_set."
@@ -1598,7 +1598,7 @@ const LISTING_SCHEMA = {
 };
 
 const CONTENT_SCHEMA = z.record(z.unknown()).describe(
-  "Full kit content: read kit_authoring_guide(index/schema and relevant model section) plus kit_vocabulary BEFORE writing; kit_validate rejects unknown keys. Language needs instructionContent; decision needs decisionSpec instead, with no prose commands/whenToUse/resources/memorySetup/selfFactsEnabled. Hybrid needs prose and schema-3 decisionSpec/agentAction; routes agent/escalate/none, source maxItems <=50(default20), agentAction.maxItems <=20(default5), server-gated. Action: modelType none, actionSpec schemaVersion1 with 1-64 ref/version tools from action_worker_options; omitted kit spec uses Slack defaults (action_worker_create uses chosen-app defaults). No model/prompts/memory/schedules/triggers/category slots/deployment; omit appCodes/apps, tools derive grants. Invoke via worker_tools/worker_tool_call. Other compartment/cadence fields follow the guide; appCodes XOR apps. Kits carry no contact rules: contact allow-all is fixed, not editable."
+  "Full kit content: read kit_authoring_guide(index/schema and relevant model section) plus kit_vocabulary BEFORE writing; kit_validate rejects unknown keys. Language needs instructionContent; decision needs decisionSpec instead, with no prose commands/whenToUse/resources/memorySetup/selfFactsEnabled. Hybrid needs prose and schema-3 decisionSpec/agentAction; routes agent/escalate/none, source maxItems <=50(default20), agentAction.maxItems <=20(default5), server-gated. Action: modelType none, actionSpec schemaVersion1 with 1-64 ref/version tools from action_worker_options; omitted kit spec uses Slack defaults (action_worker_create uses chosen-app defaults). No model/prompts/memory/schedules/triggers/category slots/deployment; omit appCodes/apps, tools derive grants. Invoke via worker_tools/worker_tool_call. Other compartment/cadence fields follow the guide. For non-Action kits, appCodes (safe defaults) and apps (explicit selections) are mutually exclusive; provide at least one of those or categorySlots. Kits carry no contact rules: contact allow-all is fixed, not editable."
 );
 
 const getMyPublisher: ToolDescriptor = defineTool({
@@ -1621,12 +1621,12 @@ const setMyPublisher: ToolDescriptor = defineTool({
   auth: "manager",
   method: "put",
   schema: {
-    name: z.string().min(3).max(80).optional().describe("New publisher name (3-80, globally unique)."),
-    description: z.string().max(2000).optional().describe("Bio shown on the publisher page."),
+    name: z.string().min(3).max(80).optional().describe("New publisher name (3-80, globally unique); the current name is accepted unchanged."),
+    description: z.string().max(2000).optional().describe("Bio shown on the publisher page; backend limit 300 chars. Empty string clears."),
     links: z.array(z.object({
       kind: z.string().describe("Link kind, e.g. website, x, github, linkedin."),
-      value: z.string().describe("The handle or URL for that kind."),
-    })).optional().describe("Full replace of the link list."),
+      value: z.string().describe("URL or, for handle kinds, @name/name; normalized to its canonical URL."),
+    })).optional().describe("Full replace of the link list in display order; [] clears."),
     isListed: z.boolean().optional().describe("false hides the profile page from the directory; kits stay installable."),
   },
   path: `${KITS_API}/publisher`,
@@ -1643,7 +1643,7 @@ const listMyKits: ToolDescriptor = defineTool({
   name: "my_kits_list",
   title: "List My Kits",
   description:
-    "List account kits in every state: published/unlisted/private/removedByAdmin, with installed workers and listing/setup metadata. {{scope}} moderationStatus clear|flagged|underReview|takenDown is authoritative; semantic scanning can flag a public kit minutes AFTER success. Reread after public publishing; kit_scan_get has findings.",
+    "List account kits in every state: published/unlisted/private/removedByAdmin, with installedWorkerCount/workersBehind for this account's installs and listing/setup metadata. {{scope}} moderationStatus clear|flagged|underReview|takenDown is authoritative; semantic scanning can flag a public kit minutes AFTER success. Reread after public publishing; kit_scan_get has findings.",
   auth: "manager",
   method: "get",
   schema: {},
@@ -1696,7 +1696,7 @@ const updateKit: ToolDescriptor = defineTool({
   name: "kit_update",
   title: "Update Kit",
   description:
-    "Partially edit listing metadata, served text, memory and permissions; omitted fields stay unchanged, slug stays fixed. {{scope}} skillResources and memorySetup replace their full arrays. permissions/categorySlots replace TOGETHER: supplying either rebuilds both, omitted partner defaults empty. contactAllowAll is a deprecated compatibility input and is ignored. Labels validate against final text/manifest. Non-private text edits re-run scanning;503 changes nothing, retry later. Use kit_replace for whole content including schedules/triggers/usage windows. Installed workers keep their copies." + NEW_SCOPE_NOTE,
+    "Partially edit listing metadata, served text, memory and permissions; omitted/null fields stay unchanged, slug stays fixed. {{scope}} skillResources, memorySetup, appDescriptions and modelScores fully replace their arrays; [] clears. memorySetup is a text edit for scanning. permissions/categorySlots replace TOGETHER: supplying either rebuilds both, omitted partner defaults empty. Timeframe/contact policy, child limits and MCP bindings carry over; ruleCounts clears because the manifest is now authored. contactAllowAll is a deprecated compatibility input and is ignored. Labels validate against final text/manifest. Non-private text edits re-run scanning;503 changes nothing, retry later. Use kit_replace for whole content including schedules/triggers/usage windows. Installed workers keep their copies." + NEW_SCOPE_NOTE,
   auth: "manager",
   method: "patch",
   schema: {
@@ -1816,7 +1816,7 @@ const deleteKit: ToolDescriptor = defineTool({
   name: "kit_delete",
   title: "Delete Kit",
   description:
-    "Hard-delete a listing (204). PERMANENT; kit_unpublish is the reversible alternative. Workers installed from it are untouched. The second call is a 404. {{scope}}" +
+    "Hard-delete a listing and its download history/stats (204). PERMANENT; kit_unpublish is the reversible alternative. Workers installed from it are untouched. The second call is a 404. {{scope}}" +
     NEW_SCOPE_NOTE,
   auth: "manager",
   method: "delete",
