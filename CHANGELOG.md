@@ -6,7 +6,7 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.3.16] - 2026-10-11
+## [0.3.16] - 2026-10-12
 
 ### Changed
 
