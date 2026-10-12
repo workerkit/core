@@ -1,17 +1,24 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { getEncoding } from "js-tiktoken";
+import { textAuditPolicy, reviewedTextFragments, backendContractProvenance } from "../dist/index.js";
 
 const encoder = getEncoding("o200k_base");
-const complex = new Set(["worker_run", "kit_install", "kit_install_preview", "kit_publish", "kit_validate", "delivery_create", "worker_deploy", "mcp_server_create"]);
 
 /** Analyze a captured tools/list + initialize payload, never a token billing estimate. */
-export function measureSurface(surface, { sharedText = {}, uppercaseTerms = {} } = {}) {
+export function measureSurface(surface, { sharedText = {}, fragments = reviewedTextFragments, policy = textAuditPolicy, uppercaseTerms = policy.uppercaseTerms } = {}) {
   if (!Array.isArray(surface.tools) || typeof surface.instructions !== "string") {
     throw new Error("Expected {tools: [...], instructions: string}");
   }
   const names = surface.tools.map(t => t.name);
   if (new Set(names).size !== names.length) throw new Error("Duplicate advertised tool name");
+  for (const [id, fragment] of Object.entries(fragments)) {
+    if (!fragment.text?.trim() || !fragment.reason?.trim() || !fragment.ruleId?.trim() ||
+      !Array.isArray(fragment.locations) || fragment.locations.length < 2 ||
+      fragment.locations.some(p=>typeof p !== "string" || !p.trim()) ||
+      new Set(fragment.locations).size !== fragment.locations.length)
+      throw new Error(`Invalid reviewed fragment: ${id}`);
+  }
   const parameterTexts = [];
   function visit(value, location) {
     if (Array.isArray(value)) return value.forEach((v, i) => visit(v, location + "[" + i + "]"));
@@ -31,6 +38,7 @@ export function measureSurface(surface, { sharedText = {}, uppercaseTerms = {} }
       definitionChars: serialized.length,
       definitionTokens: encoder.encode(serialized).length,
       descriptionChars: tool.description.length,
+      descriptionGuidance: policy.descriptionGuidance[tool.name] ?? null,
       inputSchemaChars: JSON.stringify(tool.inputSchema).length,
       parameterDescriptionChars: parameterTexts.slice(firstParameter).reduce((n,p)=>n+p.text.length,0),
     };
@@ -39,15 +47,22 @@ export function measureSurface(surface, { sharedText = {}, uppercaseTerms = {} }
   const texts = [...surface.tools.map(t=>({location:t.name, text:t.description})), ...parameterTexts];
   for (const {location,text} of texts) {
     // Exact long clauses, reported as advisory candidates rather than semantic duplication.
-    for (const span of text.split(/(?<=[.!?])\s+/).filter(s=>s.length>=120)) {
+    for (const span of text.split(/(?<=[.!?])\s+/).filter(s=>s.length>=policy.minimumRepeatedClauseChars)) {
       const locations = spans.get(span) ?? new Set();
       locations.add(location); spans.set(span, locations);
     }
   }
   const duplicates = [...spans].filter(([,locations])=>locations.size>1)
-    .map(([text,locations])=>({text,locations:[...locations].sort(),repeatedChars:text.length*(locations.size-1),
-      owners: Object.entries(sharedText).filter(([,value])=>value.includes(text)).map(([id])=>id),
-    }))
+    .map(([text,locations])=>{
+      const attributions = Object.entries(fragments).filter(([,f])=>f.text.includes(text))
+        .map(([owner,f])=>({owner,ruleId:f.ruleId,reason:f.reason,
+          reviewedLocations:[...locations].filter(p=>f.locations.includes(p)).sort()}))
+        .filter(a=>a.reviewedLocations.length);
+      const unreviewedLocations = [...locations].filter(p=>!attributions.some(a=>a.reviewedLocations.includes(p))).sort();
+      return {text,locations:[...locations].sort(),repeatedChars:text.length*(locations.size-1),
+        owners:[...new Set([...attributions.map(a=>a.owner),...Object.entries(sharedText).filter(([,v])=>v.includes(text)).map(([id])=>id)])],
+        classification:unreviewedLocations.length ? "review-required" : "reviewed-generated",attributions,unreviewedLocations};
+    })
     .sort((a,b)=>b.repeatedChars-a.repeatedChars);
   const shouting = texts.flatMap(({location,text}) => [...new Set(text.match(/\b[A-Z][A-Z_]{2,}\b/g) ?? [])]
     .filter(word=>!Object.hasOwn(uppercaseTerms,word)).map(word=>({location,word})));
@@ -64,7 +79,15 @@ export function measureSurface(surface, { sharedText = {}, uppercaseTerms = {} }
     inputSchemaChars: rows.reduce((n,r)=>n+r.inputSchemaChars,0),
     parameterDescriptionChars: rows.reduce((n,r)=>n+r.parameterDescriptionChars,0),
     note: "Parameter-description characters are already included in inputSchemaChars. Token counts describe serialized metadata, not billed or model-visible tokens.",
-    oversized: rows.filter(r=>r.descriptionChars>2*(complex.has(r.name)?1200:700)).map(r=>({name:r.name,chars:r.descriptionChars})),
+    oversized: rows.filter(r=>r.descriptionGuidance && r.descriptionChars>2*r.descriptionGuidance.chars)
+      .map(r=>({name:r.name,chars:r.descriptionChars,category:r.descriptionGuidance.category,guideChars:r.descriptionGuidance.chars})),
+    unclassifiedTools: rows.filter(r=>!r.descriptionGuidance).map(r=>r.name),
+    repetitionSummary: Object.fromEntries(["reviewed-generated","review-required"].map(category=>{
+      const selected=duplicates.filter(d=>d.classification===category);
+      return [category,{clauses:selected.length,repeatedChars:selected.reduce((sum,d)=>sum+d.repeatedChars,0)}];
+    })),
+    repetitionMethod: {minimumClauseChars:policy.minimumRepeatedClauseChars,
+      note:"Exact sentence matches in tool and input-parameter descriptions only; excludes short, partial and semantic repetition. Reviewed placement is not a deletion opportunity. Repeated characters are counted once per matched clause, not once per source attribution."},
     duplicates,
     shouting,
     descriptionExposureWarnings: rows.filter(r=>r.descriptionChars>2048).map(r=>({name:r.name,chars:r.descriptionChars,
@@ -79,6 +102,7 @@ export function measureCapture(capture) {
     schemaVersion:1,
     tokenizer:{package:"js-tiktoken",version:"1.0.21",encoding:"o200k_base"},
     provenance:capture.provenance,
+    auditPolicyProvenance:backendContractProvenance,
     surfaces:Object.fromEntries(Object.entries(capture.surfaces).map(([name,surface])=>[name,measureSurface(surface)])),
   };
 }

@@ -33,7 +33,9 @@ describe("canonical guidance", () => {
 
   it("keeps consequential guidance available when initialize instructions are absent", () => {
     const d = (name: string) => byName(name)!.description;
-    expect(d("key_info")).toContain('key minted with "all"');
+    expect(d("key_info")).toContain('do not automatically gain scopes added after minting, even when minted with "all"');
+    expect(d("key_info")).toContain("An authorized edit can update an existing key");
+    expect(d("key_info")).toContain("expanding beyond an agent grant requires fresh consent");
     expect(d("key_info")).toContain("never retry a 403");
     expect(d("key_info")).toContain("workerIds");
     expect(d("worker_run")).toContain("HTTP 200 Skipped");

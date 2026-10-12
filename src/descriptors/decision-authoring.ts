@@ -1,5 +1,6 @@
 // Generated from the backend agent contract. Edit the backend source and re-import; do not edit here.
 import { z } from "../zod.js";
+import { workerCreationTimezoneHint } from "../guidance.js";
 import { defineTool, CREATE, type ToolDescriptor } from "./types.js";
 
 const key = z.string().regex(/^(?=.{1,40}$)[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/);
@@ -22,7 +23,7 @@ export const createDecisionWorker: ToolDescriptor = defineTool({
   schema: {
     requestId: z.string().min(1).max(128).regex(/^[!-~]+$/).describe("Unique creation id. Reuse with the same body on retries; new id creates a new worker."),
     name: z.string().min(1).max(100),
-    timeZoneId: z.string().trim().min(1).max(64).optional().describe("The worker's timezone, as an IANA id such as America/New_York. Ask the worker creator for it if it is not already known; never guess it from connected calendars or the server's clock. Omitted means UTC."),
+    timeZoneId: z.string().trim().min(1).max(64).optional().describe(workerCreationTimezoneHint),
     source: z.object({
       recipe: z.enum(["email-previews", "calendar-events", "sheets-rows"]),
       args: z.record(z.unknown()).optional().describe("Arguments from the discovered recipe's argsSchema. No placeholders. Sheets requires fileId, range and columns."),

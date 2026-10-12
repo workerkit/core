@@ -19,6 +19,8 @@ export type {
 export * from "./descriptors/index.js";
 export * from "./scopes.js";
 export * from "./guidance.js";
+export * from "./guidance-coverage.js";
+export * from "./text-audit.js";
 export * from "./instructions.js";
 export * from "./profiles.js";
 export { backendContractProvenance } from "./contract-provenance.js";

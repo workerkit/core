@@ -4,13 +4,16 @@
  * discoverable tools; initialize instructions supplement their delivery.
  */
 const NO_AUTO_403 = "Never automatically retry a 403";
+export const workerCreationTimezoneHint = "The worker's timezone, as an IANA id such as America/New_York. Ask the worker creator for it if it is not already known; never guess it from connected calendars or the server's clock. Omitted means UTC.";
+export const runModelHint = "Language/hybrid only: catalog slug or reviewed family alias, resolved and checked for enabled provider/tier on THIS run. Never changes the stored deployment model. Omit to use it.";
+export const scopeReviewAction = "Ask the credential owner or an account Admin to review scopes/selection at {appUrl}, within the existing grant ceiling and current member authority. An authorized edit can update an existing key; expanding beyond an agent grant requires fresh consent.";
 export const guidance = {
   authority: NO_AUTO_403 + "; read its cause. Protected content and authority refusals are not necessarily missing scopes.",
   noRetry403: NO_AUTO_403 + ".",
   protectedContent: NO_AUTO_403 + "; broader scopes do not unlock protected kit content.",
-  scopeReview: "Ask the credential owner or an account Admin to review scopes/selection at {appUrl}, within the existing grant ceiling and current member authority. Check key_info for this credential's scopes and worker selection.",
+  scopeReview: scopeReviewAction + " Check key_info for this credential's scopes and worker selection.",
   memberAdminOnly: "This operation requires an account administrator. " + NO_AUTO_403 + ". Scopes never grant member keys admin-only setup; ask an account administrator to perform it.",
-  scopeSnapshot: 'Keys do not acquire scopes added after minting, even when minted with "all". Key scopes, current member authority and worker selection all apply.',
+  scopeSnapshot: 'Keys do not automatically gain scopes added after minting, even when minted with "all". Key scopes, current member authority and worker selection all apply.',
   workerReach: "A restricted-key 404 can mean nonexistent, another account, or outside the key's worker selection; it never proves a prior deletion succeeded.",
   skipped: "Skipped is a normal run receipt, not an error; read skipReason.",
   spendCap: "FleetSpendCap alone does not identify the ceiling: errorCode human_spend_ceiling is the human-approved spendPolicy; fleet_spend_cap is the editable fleet budget. Inspect it before recommending a fix.",

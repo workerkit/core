@@ -14,11 +14,14 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 - Shorter tool text preserves existing names, input/output schemas and annotations. Shared instructions and explicit scope metadata are available to consumers.
 - Manager scope prose renders from the same metadata, including checkout ownership and deployment implied by kit-install settings.
 - Detailed decision and hybrid interpretation accompanies classified `worker_run` and `run_get` results, reducing catalog repetition. `toolDocumentation` retains the full text for offline help and REST; pre-call warnings stay in tool descriptions. Raw response data is unchanged.
+- Publication and publication reruns require the `workerkit` account.
 
 ### Fixed
 
+- Scope guidance distinguishes automatic scope additions from authorized edits to existing keys; expansion beyond an agent grant requires fresh consent.
 - Guidance keeps restricted-key 404 results uncertain, distinguishes human-approved spending ceilings from fleet budgets, and explains hybrid wallet charges and linked follow-on runs accurately.
 - Restored model-alias resolution, classification wait restrictions, install-answer behavior, publisher bio limits and kit-edit/deletion consequences from the REST contract. REST-only long polling remains separate from MCP inputs.
+- Fleet ceiling guidance counts model costs independently of wallet charges, including BYOK. Kit update guidance states that renaming preserves the existing slug.
 
 ## [0.3.15] - 2026-10-10
 

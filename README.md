@@ -5,14 +5,13 @@
 [![node](https://img.shields.io/node/v/%40workerkit%2Fcore.svg)](https://nodejs.org)
 [![license](https://img.shields.io/npm/l/%40workerkit%2Fcore.svg)](LICENSE)
 
-The shareable [WorkerKit](https://workerkit.ai) surface: an HTTP API client, the
-declarative tool-descriptor registry (97 authenticated fleet-management tools +
-8 anonymous kits-directory tools), and the single wire-execution path that turns
-a descriptor plus parameters into one HTTP operation.
+The [WorkerKit](https://workerkit.ai) API client and tool registry for Node.js.
+It provides 97 authenticated management tools, 8 anonymous directory tools,
+and a shared execution engine for their HTTP requests.
 
-Deliberately MCP-free: descriptors carry MCP-shaped annotations and zod schemas,
-but nothing here depends on an MCP SDK, so an MCP server, a CLI, or docs tooling
-can all consume the same registry.
+Descriptors include agent guidance, annotations and Zod input schemas. MCP
+servers, CLIs and documentation tools can use the same registry without an
+MCP SDK dependency.
 
 ## Contract ownership
 
@@ -195,9 +194,9 @@ the descriptor-contract tests pin each one's exact wire call, so behavior change
 are visible in the diff. Security reports go to [SECURITY.md](SECURITY.md), not the
 issue tracker.
 
-Releases are tag-driven: maintainers push a `vX.Y.Z` tag and CI publishes to npm
+Releases are tag-driven: the `workerkit` account pushes a `vX.Y.Z` tag and CI publishes to npm
 via [trusted publishing](https://docs.npmjs.com/trusted-publishers) with a
-provenance attestation. No npm tokens exist for this package.
+provenance attestation. Publication reruns also require the `workerkit` account.
 
 ## Links
 

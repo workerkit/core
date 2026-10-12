@@ -23,6 +23,7 @@ export const decisionInstructions = [
   "\n- " + g.runtimeOff + " " + g.time,
   "\n- " + g.secrets,
   "\n- " + g.support,
+  "\n- Action tools, fleet monitoring, scheduling, publishing and connection administration are on the full profile.",
 ].join(" ");
 
 export const directoryInstructions = [
@@ -30,6 +31,7 @@ export const directoryInstructions = [
   "\n- Use directory_overview for filter vocabulary, kits_search to shortlist and kit_get to inspect exact permissions and content. Protected text is intentionally withheld.",
   "\n- Before authoring, read kit_authoring_guide (index, then relevant schema and rules), kit_vocabulary and kit_app_tools. Validate and publish with publishKits on the Manager mount. Publish private and prove the installed worker before going public.",
   "\n- Language kits contain instructions; decision kits contain classification rules; hybrid combines them. Action kits expose selected tools without a model and are never deployed or run.",
+  "\n- Read workerkit_about first for product context and when to use a worker.",
 ].join(" ");
 export type ToolProfile = "workers" | "decision" | "directory";
 export const instructionsByProfile = {

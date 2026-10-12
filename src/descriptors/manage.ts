@@ -11,7 +11,7 @@ import { createDecisionWorker } from "./decision-authoring.js";
 import { onboardingDescriptors } from "./onboarding.js";
 import { supportDescriptors } from "./support.js";
 import { z } from "../zod.js";
-import { guidance } from "../guidance.js";
+import { guidance, scopeReviewAction, runModelHint } from "../guidance.js";
 import { defineTool, CREATE, DELETE, READ_ONLY, TRIGGER, UPDATE, type ToolDescriptor } from "./types.js";
 
 // The graded-outcome vocabulary, taught wherever a score can be read or written.
@@ -76,7 +76,7 @@ const getKeyInfo: ToolDescriptor = defineTool({
   name: "key_info",
   title: "Key Info",
   description:
-    "Call FIRST to inspect this credential's scopes, account/member authority, worker selection and expiry. {{scope}} keyPrefix is a display prefix, never the secret. accountWideAuthority:false limits access to the subject member's own workers; membership/role changes invalidate consent, and scopes never grant member keys admin-only setup. allWorkers:false limits reach to workerIds plus workers it creates; workers_list/fleet_health/runs_feed/fleet_pulse/deployments_list filter accordingly. Other workers/runs return indistinguishable404: nonexistent, other account or unselected, never proof of deletion. Missing scope:403 OPERATION_NOT_ALLOWED names it; never retry a 403, and protected/authority refusals need their own remedy. Keys never gain scopes added after minting, even a key minted with \"all\". The credential owner or account Admin can review scopes/selection at https://workerkit.ai within the existing grant ceiling and live member authority. Use serverTimeUtc for expiry/elapsed calculations, never your clock.",
+    "Call FIRST to inspect this credential's scopes, account/member authority, worker selection and expiry. {{scope}} keyPrefix is a display prefix, never the secret. accountWideAuthority:false limits access to the subject member's own workers; membership/role changes invalidate consent, and scopes never grant member keys admin-only setup. allWorkers:false limits reach to workerIds plus workers it creates; workers_list/fleet_health/runs_feed/fleet_pulse/deployments_list filter accordingly. Other workers/runs return indistinguishable404: nonexistent, other account or unselected, never proof of deletion. Missing scope:403 OPERATION_NOT_ALLOWED names it; never retry a 403, and protected/authority refusals need their own remedy. " + guidance.scopeSnapshot + " " + scopeReviewAction.replace("{appUrl}", "https://workerkit.ai") + " Use serverTimeUtc for expiry/elapsed calculations, never your clock.",
   auth: "manager",
   method: "get",
   schema: {},
@@ -171,7 +171,7 @@ const runWorker: ToolDescriptor = defineTool({
     ),
     decisionProfileId: z.string().min(1).max(64).optional().describe(DECISION_PROFILE_HINT),
     modelSlug: z.string().max(64).optional().describe(
-      "Language/hybrid only: catalog slug or reviewed family alias, resolved and checked for enabled provider/tier on THIS run. Never changes the stored deployment model. Omit to use it."
+      runModelHint
     ),
     sourceArgs: z.record(z.string(), z.unknown()).optional().describe(
       "Classification only: per-run overrides merged over saved source args, within worker grants. Plain object, no placeholders. Relative bounds (after:\"-14d\",endDate:\"+48h\") resolve when the platform reads; never calculate dates yourself."
@@ -221,7 +221,7 @@ const runWorkersBulk: ToolDescriptor = defineTool({
             "What THIS worker should do on this run (≤8000 chars). Omit to run its standing instructions unchanged."
           ),
           modelSlug: z.string().max(64).optional().describe(
-            "Language/hybrid only: catalog slug or reviewed family alias, resolved and checked for enabled provider/tier on THIS run. Never changes the stored deployment model. Omit to use it."
+            runModelHint
           ),
           decisionProfileId: runWorker.schema.decisionProfileId,
           sourceArgs: runWorker.schema.sourceArgs,
@@ -1337,7 +1337,7 @@ const getFleetBudget: ToolDescriptor = defineTool({
   name: "fleet_budget_get",
   title: "Get Fleet Budget",
   description:
-    "Read account-wide daily/monthly caps, above additive worker caps. {{scope}} No worker id. maxUsdPerDay/maxUsdPerMonth are ABSENT if unset; ZERO stops runs. Returns spentTodayUsd/spentThisMonthUsd, reservedInFlightUsd, lastBreachAtUtc/lastBreachScope(fleet.day|fleet.month), serverTimeUtc. Compute windows with serverTimeUtc and headroom = ceiling - settled - reserved. Settled receipts count platform model cost or BYOK platform fee; top-ups, worker-assistant spend and app-usage billing are neither counted nor governed, so this differs from wallet balance. At settled+reserved >= ceiling, new runs return Skipped/FleetSpendCap with fleet_spend_cap." + NEW_SCOPE_NOTE,
+    "Read account-wide daily/monthly caps, above additive worker caps. {{scope}} No worker id. maxUsdPerDay/maxUsdPerMonth are ABSENT if unset; ZERO stops runs. Returns spentTodayUsd/spentThisMonthUsd, reservedInFlightUsd, lastBreachAtUtc/lastBreachScope(fleet.day|fleet.month), serverTimeUtc. Compute windows with serverTimeUtc and headroom = ceiling - settled - reserved. Settled totals sum receipt modelCostUsd + byokFeeUsd across all billing modes, including BYOK provider list cost and FreeRun usage; they are not wallet charges. Top-ups, worker-assistant spend and app-usage billing are neither counted nor governed. At settled+reserved >= ceiling, new runs return Skipped/FleetSpendCap with fleet_spend_cap." + NEW_SCOPE_NOTE,
   auth: "manager",
   method: "get",
   schema: {},
@@ -1704,7 +1704,9 @@ const updateKit: ToolDescriptor = defineTool({
   method: "patch",
   schema: {
     kitRef: kitRefParam,
-    name: LISTING_SCHEMA.name.optional(),
+    name: LISTING_SCHEMA.name.optional().describe(
+      "Kit display name; renaming preserves the existing slug. Put the searchable noun here."
+    ),
     jobSentence: LISTING_SCHEMA.jobSentence.optional(),
     description: LISTING_SCHEMA.description,
     categorySlugs: LISTING_SCHEMA.categorySlugs.optional(),
@@ -2173,3 +2175,10 @@ export const manageDescriptors: readonly ToolDescriptor[] = [
   setMcpServerTools,
   deleteMcpServer,
 ];
+
+// References to the authored fragments for hygiene reporting; never new copies.
+export const manageTextFragments = {
+  score: SCORE_NOTE, clone: CLONE_NOTE, scheduleType: SCHEDULE_TYPE_HINT,
+  scheduleGate: SCHEDULE_GATE_HINT, scheduleOverlap: SCHEDULE_OVERLAP_NOTE,
+  budgetWindow: BUDGET_WINDOW_NOTE,
+} as const;
