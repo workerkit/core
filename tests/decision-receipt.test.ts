@@ -2,6 +2,24 @@ import { expect, it } from "vitest";
 import { byName, toolDocumentation } from "../src/index.js";
 import { compactDecisionReceipt } from "../src/descriptors/decision-receipt.js";
 
+it("supports metadata reads and preserves independent business results and content references", () => {
+  const descriptor = byName("run_get")!;
+  expect(descriptor.paramFilter!({ runId: "run", includeContent: false })).toEqual({ includeContent: false });
+  expect(descriptor.paramFilter!({ runId: "run" })).toEqual({});
+  const receipt = { status: "Succeeded", digestStructured: { result: { version: 1, completeness: "partial", acceptance: "rejected", data: { count: 2 } } },
+    contentReferences: [{ kind: "structured", expiresAtUtc: null }] };
+  expect(descriptor.mapData!(receipt, {})).toEqual(receipt);
+});
+
+it.each(["run_get", "worker_run"])("%s keeps safe provenance while compacting decision results", name => {
+  const initiator = { kind: "fleetKey", userId: 7, managerKey: { id: 31, name: "Research", prefix: "pe_mgr_display" } };
+  const origin = { runId: "original", initiator };
+  const rows = [{ id: "row-1" }];
+  const receipt = { initiator, origin, relationship: "questionContinuation", parentRunId: "previous",
+    decision: { decisions: rows }, digestStructured: { items: rows } };
+  expect(byName(name)!.mapData!(receipt, {})).toMatchObject({ initiator, origin, relationship: "questionContinuation", parentRunId: "previous" });
+});
+
 it.each(["run_get", "worker_run"])("%s projects exact decision rows once without mutating the API receipt", name => {
   const rows = [{ id: "https://example.com/" + "x".repeat(400), answers: { q: "0.6999999999999999" }, probability: 0.7 }];
   const receipt = { decision: { mode: "corpus", decisions: rows, counts: { returned: 1, omitted: 2 } },

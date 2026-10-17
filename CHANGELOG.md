@@ -6,6 +6,24 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.17] - 2026-10-17
+
+### Added
+
+- `worker_quality_get`, `worker_quality_set` and `worker_quality_preview` read, save and check a worker's acceptance criteria, settings revision, three quality gates and capability availability. A manager key can switch Quality and suggestions on where available and switch any gate off; enabling automatic improvement or shared learning, and the paid improvement controls, stay in the owner dashboard. Receipts that carry a `qualityEvaluation` get concise interpretation guidance; other receipts are unchanged.
+- Kit content may declare `evaluationSpec`, public acceptance criteria that `kit_update` can replace, `kit_install_preview` shows and `kit_install` copies with all three gates off.
+- Workers can call other workers. A kit declares up to ten `workerSlots`, each naming by alias another worker the installed worker may call, with the target's model type and the operations it may use. `kit_validate` returns `workerTools`, the exact tool names and schemas those slots expose, and `kit_authoring_guide` gains the `workers` section. `kit_install_preview` and `kit_get` list a kit's slots.
+- `kit_install` takes `workerBindings`, a map from slot alias to the UUID of an installed worker in the same account. An install without bindings succeeds, but an unbound required slot reports the readiness issue `worker_slots_pending` and runs are skipped until the slot is bound in the dashboard's Apps and workers. `worker_get` names that issue.
+- `run_get` accepts `includeContent: false` to read a receipt's metadata and `contentReferences` without its reports. Receipts carry `initiator`, `origin`, `relationship` (`questionContinuation` or `workerCall`) and `workerCalls`, and `workers_list` reports `lastRun.initiator`. A fleet key appears as an id, name and prefix snapshot, never a credential; `worker_run` attributes the run to the exact fleet key and its accountable user.
+- `run_events` returns `hasMore` and `retainedSinceUtc`, and says to drain the pages and then read `run_get` for the authoritative result and cost.
+
+### Changed
+
+- `run_cancel` and `run_events` explain that a canceled run with `finishedAtUtc: null` is still settling and that cancellation does not roll back app effects or prove an interrupted write failed.
+- `run_get` describes the optional `digestStructured.result` business result and its `validationError`, and `run_clear_digest` also clears `digestStructured`, including a result's data and evidence. `contentWithheld` is explained as unreadable in this response, not an empty result.
+- `worker_permissions_get` names the dashboard section Apps and workers.
+- `worker_deploy` and `kit_install` describe `transcriptRetention` as `redacted7d` or `off`, and `run_transcript` says that new deployments keep a 7-day transcript by default.
+
 ## [0.3.16] - 2026-10-12
 
 ### Changed

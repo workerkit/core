@@ -23,7 +23,7 @@ export const decisionInstructions = [
   "\n- " + g.runtimeOff + " " + g.time,
   "\n- " + g.secrets,
   "\n- " + g.support,
-  "\n- Action tools, fleet monitoring, scheduling, publishing and connection administration are on the full profile.",
+  "\n- Quality settings, Action tools, fleet monitoring, scheduling, publishing and connection administration are on the full profile.",
 ].join(" ");
 
 export const directoryInstructions = [

@@ -67,4 +67,5 @@ export const reviewedTextFragments: Readonly<Record<string, ReviewedTextFragment
   "schema.delivery.condition": fragment(param("delivery_create","condition"),"DELIVERY-01",fields(delivery,"condition"),"Condition values have outcome-specific routing including webhook-only Skipped."),
   "schema.worker.creationTimezone": fragment(workerCreationTimezoneHint,"SETTINGS-01",fields(["action_worker_create","decision_worker_create"],"timeZoneId"),"Both creation flows must ask the creator and explain the UTC default."),
   "schema.run.model": fragment(runModelHint,"MONEY-01",["worker_run.properties.modelSlug","run_bulk.properties.workers.items.properties.modelSlug"],"A per-run override does not edit the saved deployment, in single or bulk execution."),
+  "schema.quality.spec": fragment(param("worker_quality_preview","spec"),"QUALITY-01",["worker_quality_preview.properties.spec","worker_quality_set.properties.evaluationSpec"],"Preview and save accept the same definition shape, and either can be discovered without the other."),
 };

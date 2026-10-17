@@ -6,7 +6,7 @@
 [![license](https://img.shields.io/npm/l/%40workerkit%2Fcore.svg)](LICENSE)
 
 The [WorkerKit](https://workerkit.ai) API client and tool registry for Node.js.
-It provides 97 authenticated management tools, 8 anonymous directory tools,
+It provides 100 authenticated management tools, 8 anonymous directory tools,
 and a shared execution engine for their HTTP requests.
 
 Descriptors include agent guidance, annotations and Zod input schemas. MCP
@@ -164,6 +164,55 @@ trigger.
 Discovery needs `readWorkers`, creation needs `createWorkers`, and calls and
 receipts need `invokeActions`; existing manager keys may need those scopes
 granted explicitly.
+
+## Workers that call other workers
+
+A hosted language, decision or hybrid worker can call another worker it has
+been explicitly bound to and wait for that worker's bounded result. The kit
+declares the need; the installer decides which worker fills it.
+
+A kit declares up to ten `workerSlots` in its content. Each slot has a portable
+alias, the target's `modelType`, the operations it may use (trigger, trigger
+with a prompt, trigger with typed input, or call an Action tool) and whether it
+is required. Slots never contain worker UUIDs, account IDs or keys. Read
+`kit_authoring_guide` with `section: "workers"` before declaring them;
+`kit_validate` returns `workerTools`, the exact tool names and schemas the slots
+expose to the worker's instruction.
+
+`kit_install_preview` and `kit_get` (`permissionsManifest.workerSlots`) list the
+slots a kit declares. Pass `workerBindings`, a map from alias to the UUID of an
+installed worker, to `kit_install`. The target must be in the same account and
+within the installer's authority and fleet-key selection, and its kind,
+operations and pinned contracts must match the slot. An install without
+bindings succeeds, but an unbound required slot reports the readiness issue
+`worker_slots_pending` and runs are skipped until it is bound under Apps and
+workers on the dashboard.
+
+A binding shares the target's bounded result with the caller, not its full
+receipt or transcript. The target keeps its own permissions, budget, model and
+charges. `run_get` shows `initiator`, `origin`, `relationship`
+(`questionContinuation` or `workerCall`) and `workerCalls`, each child with its
+run or Action invocation reference and `canReadReceipt`; `includeContent: false`
+returns the metadata and `contentReferences` without copying reports. A fleet
+key appears as an id, name and prefix snapshot, never a credential. Core only
+describes these fields; the server owns execution, waiting and billing.
+
+## Worker quality
+
+`worker_quality_get` reads a worker's acceptance criteria, settings revision,
+three quality gates and the reason any capability is unavailable.
+`worker_quality_set` saves reviewed criteria or changes gates and needs the
+current `expectedRevision`; `worker_quality_preview` checks a definition
+against supplied evidence without saving anything, calling a model or running
+the worker. Missing evidence is unknown, not a pass.
+
+A kit's `content.evaluationSpec` carries public acceptance criteria, and
+`kit_install` copies them with all three gates off. A manager key can switch
+on Quality and suggestions where the account allows it and can switch any
+gate off. Automatic improvement and shared learning are enabled only in the
+owner dashboard, which also holds paid comparisons, diagnosis, monitoring and
+apply/rollback. Improvements change instruction text only; shadow learning
+does not train model weights. These tools are on the full profile.
 
 ## Development
 

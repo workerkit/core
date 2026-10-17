@@ -8,6 +8,8 @@ import { measureSurface } from "./measure-descriptions.mjs";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
 const contract = JSON.parse(readFileSync(new URL("../contracts/backend-agent-contract.json", import.meta.url), "utf8"));
+// A receipt that triggers every result-only teaching: classified plus visible quality.
+const fullResultProbe = { kind: "hybrid", qualityEvaluation: { status: "unknown" } };
 
 test("generated core modules and built exports match the pinned backend contract", () => {
   syncContract(contract, true);
@@ -18,7 +20,7 @@ test("generated core modules and built exports match the pinned backend contract
   assert.deepEqual(textAuditPolicy, contract.textAuditPolicy);
   assert.deepEqual(reviewedTextFragments, contract.reviewedTextFragments);
   for (const [key,value] of Object.entries(backendContractProvenance)) assert.equal(value, contract[key]);
-  assert.equal(contract.operations.length, 106); // memory_add has two REST bindings
+  assert.equal(contract.operations.length, 109); // memory_add has two REST bindings
   assert.deepEqual([...new Set(contract.operations.map(o => o.tool))].sort(), allDescriptors.map(d=>d.name).sort());
   for (const operation of contract.operations) {
     const tool = allDescriptors.find(d=>d.name === operation.tool);
@@ -26,7 +28,7 @@ test("generated core modules and built exports match the pinned backend contract
     assert.equal(toolDocumentation(tool), operation.description);
     if (tool.resultDescription) {
       assert.ok(tool.footer, tool.name + ": result guidance has a delivery path");
-      assert.equal(tool.footer({kind:"hybrid",contentWithheld:true}, {}), tool.resultDescription);
+      assert.equal(tool.footer(fullResultProbe, {}), tool.resultDescription);
     }
     assert.equal(tool.method, operation.method);
     assert.deepEqual(scopeRequirementFor(tool.name), operation.scopes);
@@ -41,7 +43,7 @@ test("built core retains every backend-declared guidance destination", () => {
       if (check.kind === "instructions") return instructionsByProfile[profile];
       const tool = toolsForProfile(profile).find(d=>d.name===check.tool);
       if (check.kind === "parameter") return tool?.schema[check.parameter]?.description;
-      if (check.kind === "result") return tool?.footer?.({kind:"hybrid",contentWithheld:true}, {});
+      if (check.kind === "result") return tool?.footer?.(fullResultProbe, {});
       return tool?.description;
     }), []);
   }

@@ -11,7 +11,7 @@ import {
   type ToolDescriptor,
 } from "../src/index.js";
 
-// The wire contract, pinned per descriptor: for all 105 tools, executeTool
+// The wire contract, pinned per descriptor: for all 108 tools, executeTool
 // against a recording fake client must produce exactly the {method, path,
 // query/opts, body} the live server produces today. Expected values are
 // derived from the server suite's manage-tools/directory tests so the two
@@ -68,12 +68,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 97 manager + 8 anonymous descriptors, names unique, byName agrees", () => {
-    expect(manageDescriptors).toHaveLength(97);
+  it("ships exactly 100 manager + 8 anonymous descriptors, names unique, byName agrees", () => {
+    expect(manageDescriptors).toHaveLength(100);
     expect(directoryDescriptors).toHaveLength(8);
-    expect(allDescriptors).toHaveLength(105);
+    expect(allDescriptors).toHaveLength(108);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(105);
+    expect(new Set(names).size).toBe(108);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -82,7 +82,7 @@ describe("registry", () => {
     for (const descriptor of directoryDescriptors) expect(descriptor.auth).toBe("anonymous");
   });
 
-  it("pins {auth, method} for every one of the 106 descriptors", () => {
+  it("pins {auth, method} for every one of the 108 descriptors", () => {
     // The full name → auth/method table. A new/renamed tool or a changed verb
     // must show up here explicitly — no descriptor ships with an unpinned method.
     expect(
@@ -92,6 +92,9 @@ describe("registry", () => {
         "action_worker_options manager get",
         "action_worker_create manager post",
         "worker_tools manager get",
+        "worker_quality_get manager get",
+        "worker_quality_set manager patch",
+        "worker_quality_preview manager post",
         "worker_tool_call manager post",
         "worker_tool_invocation manager get",
         "app_slack_workspaces manager get",
@@ -250,6 +253,33 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
     expect(c.method).toBe("get");
     expect(c.path).toBe("/api/manage/workers/7");
     expect(c.opts.params).toEqual({});
+  });
+
+  it("quality settings carry the revision and keep fixture checks separate from updates", async () => {
+    const settings = z.object(d("worker_quality_set").schema).strict();
+    expect(settings.safeParse({ tokenId: 7, expectedRevision: 3, automaticImprovementEnabled: true }).success).toBe(false);
+    expect(settings.safeParse({ tokenId: 7, expectedRevision: 3, sharedLearningEnabled: true }).success).toBe(false);
+    expect(settings.safeParse({ tokenId: 7, expectedRevision: 3, improvementPolicy: {} }).success).toBe(false);
+    const get = await run(d("worker_quality_get"), { tokenId: 7 });
+    expect([get.method, get.path, get.opts.params]).toEqual(["get", "/api/manage/workers/7/quality", {}]);
+    const spec = { schemaVersion: 1, criteria: [] };
+    const update = await run(d("worker_quality_set"), { tokenId: 7, expectedRevision: 3, evaluationSpec: spec });
+    expect([update.method, update.path, wireBody(update.opts.body)]).toEqual([
+      "patch", "/api/manage/workers/7/quality", { expectedRevision: 3, evaluationSpec: spec },
+    ]);
+    const preview = await run(d("worker_quality_preview"), { tokenId: 7, spec, evidence: [] });
+    expect([preview.method, preview.path, preview.opts.body]).toEqual([
+      "post", "/api/manage/workers/7/quality/preview", { spec, evidence: [] },
+    ]);
+  });
+
+  it("keeps quality findings conditional and raw receipts unchanged", () => {
+    const descriptor = d("run_get");
+    const receipt = { status: "Succeeded", qualityEvaluation: { status: "unknown" } };
+    expect(descriptor.footer!(receipt, {})).toContain("Unknown means unverified, not pass");
+    expect(descriptor.footer!(receipt, {})).not.toContain("Hybrid classifies");
+    expect(descriptor.footer!({ status: "Succeeded" }, {})).toBeUndefined();
+    expect(descriptor.footer!({ ...receipt, contentWithheld: true }, {})).toBeUndefined();
   });
 
   it("worker_run POSTs prompt/modelSlug only (tokenId stays in the path)", async () => {
@@ -603,6 +633,25 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
       const c = await run(d("kit_install"), { slug: "github-triage", githubSelection });
       expect(c.opts.body).toMatchObject({ githubSelection });
     }
+  });
+
+  it("worker slots use explicit install bindings and the workers authoring guide", async () => {
+    const workerBindings = { research: "11111111-1111-4111-8111-111111111111" };
+    const c = await run(d("kit_install"), { slug: "coordinator", workerBindings });
+    expect(c.opts.body).toMatchObject({ workerBindings });
+    expect(z.object(d("kit_install").schema).safeParse({ slug: "coordinator", workerBindings: { research: "raw-key" } }).success).toBe(false);
+    expect(z.object(d("kit_install").schema).safeParse({ slug: "coordinator", workerBindings: { Research: "11111111-1111-4111-8111-111111111111" } }).success).toBe(false);
+    const guide = await run(d("kit_authoring_guide"), { section: "workers" });
+    expect(guide.opts.params).toEqual({ section: "workers" });
+  });
+
+  it("run_get asks for metadata only when the caller sets includeContent", async () => {
+    const metadata = await run(d("run_get"), { runId: RUN_ID, includeContent: false });
+    expect(metadata.method).toBe("get");
+    expect(metadata.path).toBe(`/api/manage/workers/runs/${RUN_ID}`);
+    expect(metadata.opts.params).toEqual({ includeContent: false });
+    const content = await run(d("run_get"), { runId: RUN_ID, includeContent: true });
+    expect(content.opts.params).toEqual({ includeContent: true });
   });
 
   it.each([
