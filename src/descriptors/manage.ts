@@ -597,6 +597,9 @@ const SCHEDULE_OVERLAP_NOTE =
 const SCHEDULE_ZONE_NOTE =
   " Schedule timeZoneId controls firing only; worker_timezone_set controls the worker's local dates and reports.";
 
+const SCHEDULE_DAYS_HINT =
+  "DailyAtTime only: non-empty array of full English day names, e.g. ['Monday','Tuesday','Wednesday','Thursday','Friday']. Names are case-insensitive; duplicates collapse. Days follow the schedule's effective timezone. Restricted-day occurrences missed past their local firing date expire without a run; manual runs are unaffected.";
+
 const createSchedule: ToolDescriptor = defineTool({
   name: "schedule_create",
   title: "Create Schedule",
@@ -623,6 +626,9 @@ const createSchedule: ToolDescriptor = defineTool({
     timeZoneId: z.string().optional().describe(
       "IANA time zone (e.g. 'America/New_York') overriding the worker's zone. Omit to follow the worker."
     ),
+    daysOfWeek: z.array(z.string()).min(1).nullable().optional().describe(
+      SCHEDULE_DAYS_HINT + " Omit or send null for every day. Rejected on other schedule types."
+    ),
     anchorUtc: z.string().optional().describe(`OneShot only: when to fire, must be in the future. ${UTC_HINT}`),
     isEnabled: z.boolean().default(true).describe("Whether the schedule starts enabled."),
   },
@@ -633,6 +639,7 @@ const createSchedule: ToolDescriptor = defineTool({
     intervalValue: params.intervalValue,
     timeOfDayMinutes: params.timeOfDayMinutes,
     timeZoneId: params.timeZoneId,
+    daysOfWeek: params.daysOfWeek,
     anchorUtc: params.anchorUtc,
     isEnabled: params.isEnabled,
   }),
@@ -660,6 +667,9 @@ const updateSchedule: ToolDescriptor = defineTool({
     intervalValue: z.number().int().min(1).optional().describe("New interval (see type rules)."),
     timeOfDayMinutes: z.number().int().min(0).max(1439).optional().describe("DailyAtTime: new wall-clock minutes past midnight."),
     timeZoneId: z.string().optional().describe("IANA zone override; empty string '' clears it (follow the worker)."),
+    daysOfWeek: z.array(z.string()).min(1).nullable().optional().describe(
+      SCHEDULE_DAYS_HINT + " Omit/null to keep current days; send all seven to restore every day. Rejected if the resulting type is not DailyAtTime; changing away from daily clears the restriction."
+    ),
     anchorUtc: z.string().optional().describe(`OneShot: new fire time. ${UTC_HINT}`),
     isEnabled: z.boolean().optional().describe("Enable or disable the schedule."),
   },
@@ -670,6 +680,7 @@ const updateSchedule: ToolDescriptor = defineTool({
     intervalValue: params.intervalValue,
     timeOfDayMinutes: params.timeOfDayMinutes,
     timeZoneId: params.timeZoneId,
+    daysOfWeek: params.daysOfWeek,
     anchorUtc: params.anchorUtc,
     isEnabled: params.isEnabled,
   }),

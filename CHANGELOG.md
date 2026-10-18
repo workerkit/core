@@ -6,6 +6,12 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.18] - 2026-10-17
+
+### Added
+
+- `schedule_create` and `schedule_update` accept `daysOfWeek` on `DailyAtTime` schedules: the local weekdays the schedule fires on, as full English day names. An update that omits it keeps the current days. An occurrence on a restricted day that is missed past its local firing date expires without a run, and schedule responses list the selected days by canonical name.
+
 ## [0.3.17] - 2026-10-17
 
 ### Added
