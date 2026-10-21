@@ -54,7 +54,7 @@ export const guidanceCoverage: readonly GuidanceRule[] = [
     p("run_events", "afterSeq", ["lastSeq"]),
   ] },
   { id: "SECRET-01", owner: "kit_install", checks: [
-    d("kit_install", ["NOT idempotent", "never retry success", "rawKey", "signingSecret", "ONCE", "before discarding"], manager),
+    d("kit_install", ["NOT idempotent", "never retry success", "no worker API secret", "signingSecret", "ONCE", "before discarding"], manager),
     ...["worker_clone", "worker_clone_bulk"].map(tool => d(tool, ["rawKey", "ONCE"])),
     d("delivery_secret_rotate", ["signingSecret ONCE", "Old secret stops verifying immediately", "before discarding"]),
     p("delivery_create", "channel", ["signingSecret", "ONCE"]),
@@ -90,7 +90,11 @@ export const guidanceCoverage: readonly GuidanceRule[] = [
     d("schedule_update", ["omitted fields stay unchanged", "clears the override"]),
   ] },
   { id: "SETTINGS-01", owner: "worker_permissions_get", checks: [
-    d("worker_permissions_get", ["ruleCounts reveals presence only, never rule values", "No tool here edits grants", "MORE permissive"], manager),
+    d("worker_permissions_get", ["ruleCounts reveals presence only, never rule values", "write back with worker_permissions_set", "MORE permissive"], manager),
+    // The three writes sit on the full profile only, like the quality settings.
+    d("worker_permissions_set", ["an app left out is switched OFF", "never flipped by omission", "Rules, identities and MCP tool bindings stay on the dashboard", "Returns the effective permissions"]),
+    d("worker_bindings_set", ["atomically", "aliases not named are untouched", "One worker fills one alias per caller", "unchanged live grant is left alone"]),
+    p("worker_bindings_set", "workerBindings", ["null to clear"]),
     d("worker_timezone_set", ["explicit schedule timezone overrides remain unchanged", "Reports already saved keep their times"], manager),
     p("worker_timezone_set", "timeZoneId", ["null or an empty string", "UTC"], manager),
   ] },
@@ -112,6 +116,15 @@ export const guidanceCoverage: readonly GuidanceRule[] = [
     ...["automaticImprovementEnabled", "sharedLearningEnabled"].map(field => p("worker_quality_set", field, ["Only the owner dashboard can enable"])),
     ...["kit_install_preview", "kit_install"].map(tool => d(tool, ["quality/learning gates", "worker_quality_get"], manager)),
     ...["worker_run", "run_get"].map(tool => r(tool, ["Unknown means unverified, not pass", "not an applied fix"])),
+  ] },
+  { id: "APIAPP-01", owner: "api_app_create", checks: [
+    d("api_app_create", ["Requires a live account Admin", "No upstream request, connection or worker grant is created", "creation is not idempotent"]),
+    p("api_app_create", "definition", ["No scripts, OpenAPI imports, executable templates or credentials"]),
+    d("api_app_validate", ["Saves nothing and sends no upstream request"]),
+    d("api_app_preview", ["argument values and credentials are omitted", "sends no upstream request"]),
+    p("api_app_update", "revision", ["never overwrite using a newer revision automatically"]),
+    d("api_app_publish", ["creates no public listing", "never upgrades worker bindings"]),
+    d("api_app_version_revoke", ["already dispatched effects cannot be undone", "revocation cannot be reversed"]),
   ] },
 ];
 

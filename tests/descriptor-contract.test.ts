@@ -11,7 +11,7 @@ import {
   type ToolDescriptor,
 } from "../src/index.js";
 
-// The wire contract, pinned per descriptor: for all 108 tools, executeTool
+// The wire contract, pinned per descriptor: for all 120 tools, executeTool
 // against a recording fake client must produce exactly the {method, path,
 // query/opts, body} the live server produces today. Expected values are
 // derived from the server suite's manage-tools/directory tests so the two
@@ -68,12 +68,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 100 manager + 8 anonymous descriptors, names unique, byName agrees", () => {
-    expect(manageDescriptors).toHaveLength(100);
+  it("ships exactly 112 manager + 8 anonymous descriptors, names unique, byName agrees", () => {
+    expect(manageDescriptors).toHaveLength(112);
     expect(directoryDescriptors).toHaveLength(8);
-    expect(allDescriptors).toHaveLength(108);
+    expect(allDescriptors).toHaveLength(120);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(108);
+    expect(new Set(names).size).toBe(120);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -82,13 +82,22 @@ describe("registry", () => {
     for (const descriptor of directoryDescriptors) expect(descriptor.auth).toBe("anonymous");
   });
 
-  it("pins {auth, method} for every one of the 108 descriptors", () => {
+  it("pins {auth, method} for every one of the 120 descriptors", () => {
     // The full name → auth/method table. A new/renamed tool or a changed verb
     // must show up here explicitly — no descriptor ships with an unpinned method.
     expect(
       allDescriptors.map((x) => `${x.name} ${x.auth} ${x.method}`).sort()
     ).toEqual(
       [
+        "api_apps_list manager get",
+        "api_app_get manager get",
+        "api_app_create manager post",
+        "api_app_update manager put",
+        "api_app_validate manager post",
+        "api_app_preview manager post",
+        "api_app_publish manager post",
+        "api_app_version_get manager get",
+        "api_app_version_revoke manager delete",
         "action_worker_options manager get",
         "action_worker_create manager post",
         "worker_tools manager get",
@@ -156,6 +165,9 @@ describe("registry", () => {
         "fleet_budget_get manager get",
         "fleet_budget_set manager patch",
         "worker_permissions_get manager get",
+        "worker_permissions_set manager put",
+        "worker_bindings_get manager get",
+        "worker_bindings_set manager patch",
         "models_list manager get",
         "deployments_list manager get",
         "deployment_get manager get",
@@ -277,6 +289,8 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
     const descriptor = d("run_get");
     const receipt = { status: "Succeeded", qualityEvaluation: { status: "unknown" } };
     expect(descriptor.footer!(receipt, {})).toContain("Unknown means unverified, not pass");
+    expect(descriptor.footer!(receipt, {})).toContain("code-computed executionChecks");
+    expect(descriptor.footer!(receipt, {})).toContain("do not add them");
     expect(descriptor.footer!(receipt, {})).not.toContain("Hybrid classifies");
     expect(descriptor.footer!({ status: "Succeeded" }, {})).toBeUndefined();
     expect(descriptor.footer!({ ...receipt, contentWithheld: true }, {})).toBeUndefined();
@@ -821,6 +835,14 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
   it("forwards the caller's token on every manager call", async () => {
     // Strict descriptors are validated before the request, so these need complete inputs.
     const strictInputs: Record<string, Record<string, unknown>> = {
+      api_app_get: { appId: RUN_ID },
+      api_app_create: { name: "Test", definition: { schemaVersion: 1, origin: "https://api.example.com", operations: [{}] } },
+      api_app_update: { appId: RUN_ID, revision: RUN_ID, name: "Test", enabled: false, definition: { schemaVersion: 1, origin: "https://api.example.com", operations: [{}] } },
+      api_app_validate: { definition: { schemaVersion: 1, origin: "https://api.example.com", operations: [{}] } },
+      api_app_preview: { definition: { schemaVersion: 1, origin: "https://api.example.com", operations: [{}] }, operation: "lookup", arguments: {} },
+      api_app_publish: { appId: RUN_ID, revision: RUN_ID },
+      api_app_version_get: { appId: RUN_ID, versionId: RUN_ID },
+      api_app_version_revoke: { appId: RUN_ID, versionId: RUN_ID },
       action_worker_create: { requestId: "action-1", name: "Slack", slackConnectionId: 1 },
       worker_tool_call: { tokenId: 1, toolName: "slack_send_dm", arguments: { userId: "U123", text: "hello" }, idempotencyKey: "send-1" },
       worker_tool_invocation: { tokenId: 1, invocationId: RUN_ID },
@@ -861,6 +883,31 @@ describe("kit authoring wire contract (the publishKits lane + the permissions re
     expect(c.method).toBe("get");
     expect(c.path).toBe("/api/manage/workers/42/permissions");
     expect(c.opts.params).toEqual({});
+  });
+
+  it("worker_permissions_set PUTs the app set and only the scalars given, without tokenId", async () => {
+    const apps = [{ code: "email", operations: ["view_email"] }, { code: "slack", allowAll: false }];
+    const c = await run(d("worker_permissions_set"), { tokenId: 42, apps, timeframePastDays: -1 }, "t");
+    expect(c.method).toBe("put");
+    expect(c.path).toBe("/api/manage/workers/42/permissions");
+    expect(wireBody(c.opts.body)).toEqual({ apps, timeframePastDays: -1 });
+  });
+
+  it("worker_bindings_get GETs the grants with search promoted to the query", async () => {
+    const plain = await run(d("worker_bindings_get"), { tokenId: 42 }, "t");
+    expect(plain.method).toBe("get");
+    expect(plain.path).toBe("/api/manage/workers/42/worker-bindings");
+    expect(plain.opts.params).toEqual({});
+    const searched = await run(d("worker_bindings_get"), { tokenId: 42, search: "brain" }, "t");
+    expect(searched.opts.params).toEqual({ search: "brain" });
+  });
+
+  it("worker_bindings_set PATCHes the alias map verbatim, null clearing an alias", async () => {
+    const workerBindings = { brain: { workerId: RUN_ID }, notes: { workerId: OPERATOR_ID, operations: 1 }, old: null };
+    const c = await run(d("worker_bindings_set"), { tokenId: 42, workerBindings }, "t");
+    expect(c.method).toBe("patch");
+    expect(c.path).toBe("/api/manage/workers/42/worker-bindings");
+    expect(wireBody(c.opts.body)).toEqual({ workerBindings });
   });
 
   it("publisher_get_mine / publisher_set / my_kits_list hit the literal routes beside {slug}", async () => {

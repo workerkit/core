@@ -20,7 +20,7 @@ test("generated core modules and built exports match the pinned backend contract
   assert.deepEqual(textAuditPolicy, contract.textAuditPolicy);
   assert.deepEqual(reviewedTextFragments, contract.reviewedTextFragments);
   for (const [key,value] of Object.entries(backendContractProvenance)) assert.equal(value, contract[key]);
-  assert.equal(contract.operations.length, 109); // memory_add has two REST bindings
+  assert.equal(contract.operations.length, 121); // memory_add has two REST bindings
   assert.deepEqual([...new Set(contract.operations.map(o => o.tool))].sort(), allDescriptors.map(d=>d.name).sort());
   for (const operation of contract.operations) {
     const tool = allDescriptors.find(d=>d.name === operation.tool);

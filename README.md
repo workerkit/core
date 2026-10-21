@@ -6,7 +6,7 @@
 [![license](https://img.shields.io/npm/l/%40workerkit%2Fcore.svg)](LICENSE)
 
 The [WorkerKit](https://workerkit.ai) API client and tool registry for Node.js.
-It provides 100 authenticated management tools, 8 anonymous directory tools,
+It provides 112 authenticated management tools, 8 anonymous directory tools,
 and a shared execution engine for their HTTP requests.
 
 Descriptors include agent guidance, annotations and Zod input schemas. MCP
@@ -67,6 +67,22 @@ The client ships sensible production defaults: per-attempt timeouts under a
 whole-call deadline, bounded retries for idempotent methods only, a streamed
 response-size cap, and quota/rate-limit header extraction. `scrubSecrets` helps
 keep credentials out of logs.
+
+## Author API apps
+
+`api_app_validate` checks a `{ definition }` offline, and `api_app_create`
+saves it as an account-private draft from `{ name, definition, enabled: false }`.
+Use `api_apps_list` / `api_app_get` to inspect saved state, `api_app_update`
+with its reviewed revision to edit it, and `api_app_publish` with
+`{ appId, revision }` to publish an immutable version. Version reads and
+revocation use `api_app_version_get` and `api_app_version_revoke`.
+
+Authoring requires a live account Admin and the `managePrivateApiApps` scope,
+which existing keys gain only through explicit re-scoping. Publishing does not
+create a public listing or upgrade worker bindings. Definitions declare named
+authentication slots, never credentials; credentials and worker bindings are
+configured separately on the dashboard. A revision conflict requires re-reading
+the app.
 
 ## Discover GitHub targets before installing
 
@@ -185,8 +201,15 @@ installed worker, to `kit_install`. The target must be in the same account and
 within the installer's authority and fleet-key selection, and its kind,
 operations and pinned contracts must match the slot. An install without
 bindings succeeds, but an unbound required slot reports the readiness issue
-`worker_slots_pending` and runs are skipped until it is bound under Apps and
-workers on the dashboard.
+`worker_slots_pending` and runs are skipped until it is bound.
+
+After install, `worker_bindings_get` lists a worker's grants, the slots its
+kit declares, the required slots still missing and the workers that could
+fill them. `worker_bindings_set` fills, re-points or clears aliases in one
+atomic map (`manageAppsAndWorkers`): a declared slot takes the slot's
+operations and Action tools when they are omitted, a free alias names its
+operations, and an unchanged live grant is left alone. Both follow the
+caller's authority and fleet-key selection.
 
 A binding shares the target's bounded result with the caller, not its full
 receipt or transcript. The target keeps its own permissions, budget, model and
@@ -196,6 +219,19 @@ run or Action invocation reference and `canReadReceipt`; `includeContent: false`
 returns the metadata and `contentReferences` without copying reports. A fleet
 key appears as an id, name and prefix snapshot, never a credential. Core only
 describes these fields; the server owns execution, waiting and billing.
+
+## Change an existing worker's apps
+
+`worker_permissions_set` (account Admin, `manageAppsAndWorkers`) replaces an
+existing worker's app set in the vocabulary `worker_permissions_get` returns.
+An app left out is switched off, and a stance changes only when the call sends
+`allowAll`: a deny-by-default app switched on reads nothing until the owner
+writes rules or the call sends `allowAll: true`. Rules, identities and MCP tool
+bindings stay on the dashboard.
+
+`manageAppsAndWorkers` also covers `worker_bindings_set`. Keys that held every
+earlier scope when it was introduced carry it; other existing keys need an
+account admin to add it.
 
 ## Worker quality
 

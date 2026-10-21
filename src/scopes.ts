@@ -4,7 +4,8 @@ export const managerScopes = [
   "readWorkers", "readRuns", "runWorkers", "manageMemory", "manageSchedules",
   "manageInstructions", "manageState", "installKits", "manageDeliveries", "manageBudgets",
   "createWorkers", "publishKits", "manageConnections", "manageDeployments", "deleteWorkers",
-  "readWallet", "requestWalletTopUp", "discoverAppResources", "invokeActions",
+  "readWallet", "requestWalletTopUp", "discoverAppResources", "invokeActions", "managePrivateApiApps",
+  "manageAppsAndWorkers",
 ] as const;
 export type ManagerScope = typeof managerScopes[number];
 export type ScopeRequirement =
@@ -14,7 +15,8 @@ export type ScopeRequirement =
   | { kind: "ownedCheckout"; scope: "requestWalletTopUp" };
 
 const groups: Partial<Record<ManagerScope, readonly string[]>> = {
-  readWorkers: ["workers_list","worker_get","fleet_health","account_usage","memory_get","schedules_list","delivery_list","delivery_channels","instruction_get","instruction_versions","instruction_version_get","models_list","deployments_list","deployment_get","worker_permissions_get","publisher_get_mine","my_kits_list","kit_scan_get","apps_list","model_keys_list","mcp_servers_list","mcp_server_get","action_worker_options","worker_tools","worker_quality_get"],
+  managePrivateApiApps: ["api_app_create","api_app_update","api_app_validate","api_app_preview","api_app_publish","api_app_version_get","api_app_version_revoke"],
+  readWorkers: ["workers_list","worker_get","fleet_health","account_usage","memory_get","schedules_list","delivery_list","delivery_channels","instruction_get","instruction_versions","instruction_version_get","models_list","deployments_list","deployment_get","worker_permissions_get","worker_bindings_get","publisher_get_mine","my_kits_list","kit_scan_get","apps_list","model_keys_list","mcp_servers_list","mcp_server_get","action_worker_options","worker_tools","worker_quality_get"],
   readRuns: ["worker_runs","runs_feed","fleet_pulse","run_get","run_events","run_transcript","run_question"],
   runWorkers: ["worker_run","run_bulk","run_answer","run_cancel"],
   manageMemory: ["memory_add","memory_update","memory_delete","run_clear_digest","run_score"],
@@ -33,8 +35,10 @@ const groups: Partial<Record<ManagerScope, readonly string[]>> = {
   requestWalletTopUp: ["wallet_checkout_create"],
   discoverAppResources: ["app_slack_workspaces","app_slack_conversations","app_github_accounts","app_github_repos","app_github_branches"],
   invokeActions: ["worker_tool_call","worker_tool_invocation"],
+  manageAppsAndWorkers: ["worker_permissions_set","worker_bindings_set"],
 };
 const requirements: Record<string, ScopeRequirement | null> = {
+  api_apps_list:{kind:"scope",scope:"readWorkers"}, api_app_get:{kind:"scope",scope:"readWorkers"},
   key_info:null, onboarding_get:null, support_request_create:null,
   workerkit_about:null, directory_overview:null, kits_search:null, kit_get:null,
   publisher_get:null, kit_app_tools:null, kit_authoring_guide:null, kit_vocabulary:null,

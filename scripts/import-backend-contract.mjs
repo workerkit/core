@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const localBundle = resolve(root, "contracts/backend-agent-contract.json");
 const header = "// Generated from the backend agent contract. Edit the backend source and re-import; do not edit here.\n";
 const allowed = new Set([
-  "descriptors/actions.ts", "descriptors/app-discovery.ts", "descriptors/decision-authoring.ts",
+  "descriptors/actions.ts", "descriptors/api-apps.ts", "descriptors/app-discovery.ts", "descriptors/decision-authoring.ts",
   "descriptors/decision-receipt.ts", "descriptors/directory.ts", "descriptors/index.ts",
   "descriptors/manage.ts", "descriptors/onboarding.ts", "descriptors/quality.ts", "descriptors/support.ts", "descriptors/types.ts",
   "guidance.ts", "guidance-coverage.ts", "text-audit.ts", "instructions.ts", "profiles.ts", "scopes.ts", "zod.ts", "redact.ts",

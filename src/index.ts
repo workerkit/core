@@ -1,5 +1,5 @@
 // @workerkit/core — the shareable WorkerKit surface: the HTTP client, the
-// tool-descriptor registry (100 manager + 8 anonymous directory tools), the
+// tool-descriptor registry (manager and anonymous directory tools), the
 // single wire-execution path, and the pure formatting/redaction helpers.
 // Deliberately MCP-free: MCP (or CLI) presentation lives with the consumer.
 

@@ -6,6 +6,23 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.19] - 2026-10-21
+
+### Added
+
+- Nine API-app authoring tools list, read, validate, preview, create and update account-private definitions, and publish, inspect and revoke immutable versions. Authoring requires a live account Admin and the explicit `managePrivateApiApps` scope. Draft edits preserve optimistic revisions; publication never upgrades worker bindings or creates a public listing.
+- `worker_bindings_get` and `worker_bindings_set` read and set a worker's grants to call other workers after install. One atomic alias map fills, re-points or clears grants; a declared kit slot supplies its own operations and Action tools; an unchanged live grant keeps its revision. Reads ride `readWorkers`; the write requires the new `manageAppsAndWorkers` scope.
+- `worker_permissions_set` replaces an existing worker's app set in the vocabulary `worker_permissions_get` returns, plus the contact stance, blocked sender categories, timeframes and child budget. A stance changes only when the call sends `allowAll`. Requires `manageAppsAndWorkers` and a live account Admin; rules, identities and MCP tool bindings remain dashboard-only.
+- `managePrivateApiApps` and `manageAppsAndWorkers` join `managerScopes`. Existing keys gain `managePrivateApiApps` only through explicit re-scoping. Keys that held every earlier scope when `manageAppsAndWorkers` was introduced carry it; other existing keys need an account admin to add it.
+- The backend contract's guidance coverage gains `APIAPP-01`, which pins the API-app safety guidance: Admin authority, no credentials in definitions, offline validation and preview, reviewed revisions and irreversible revocation.
+
+### Changed
+
+- `worker_permissions_get`, `worker_get`, `run_get`, `kit_install_preview` and `kit_install` point to the new tools for binding slots and changing access.
+- `worker_permissions_get` reports messaging `providers` and the Firecrawl and Nimble `capabilities` a worker holds, so its output writes back unchanged.
+- `kit_install` returns no worker API key. Trigger signing secrets are still returned once.
+- Quality receipt guidance separates code-computed `executionChecks` from model `systemReview` diagnostics and notes that runtime and app failure counts can overlap.
+
 ## [0.3.18] - 2026-10-17
 
 ### Added

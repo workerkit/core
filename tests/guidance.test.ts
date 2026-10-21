@@ -17,7 +17,7 @@ describe("canonical guidance", () => {
   });
 
   it("keeps the profile inventories and instructions aligned", () => {
-    expect(toolsForProfile("workers")).toHaveLength(107);
+    expect(toolsForProfile("workers")).toHaveLength(119);
     expect(toolsForProfile("decision")).toHaveLength(24);
     expect(toolsForProfile("decision").map(tool => tool.name)).not.toContain("worker_quality_set");
     expect(toolsForProfile("directory")).toHaveLength(8);
@@ -51,7 +51,7 @@ describe("canonical guidance", () => {
     expect(d("run_events")).toContain("afterSeq");
     expect(d("run_events")).toContain("lastSeq");
     expect(d("instruction_version_get")).toContain("403");
-    expect(d("kit_install")).toContain("rawKey");
+    expect(d("kit_install")).toContain("no worker API secret");
     expect(d("kit_install")).toContain("ONCE");
     expect(d("delivery_secret_rotate")).toContain("signingSecret");
     expect(d("worker_delete")).toContain("NEVER proves an earlier delete succeeded");

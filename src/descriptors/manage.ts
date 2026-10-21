@@ -1,10 +1,11 @@
 // Generated from the backend agent contract. Edit the backend source and re-import; do not edit here.
-// The 100 authenticated fleet-management tools, as pure descriptors. The
+// The authenticated fleet-management tools, as pure descriptors. The
 // descriptions ARE the product surface: they are served verbatim to MCP
 // clients (and any future CLI help), so every contract nuance an agent must
 // not get wrong is taught here.
 
 import { actionDescriptors } from "./actions.js";
+import { apiAppDescriptors } from "./api-apps.js";
 import { appDiscoveryDescriptors } from "./app-discovery.js";
 import { compactDecisionReceipt } from "./decision-receipt.js";
 import { createDecisionWorker } from "./decision-authoring.js";
@@ -51,7 +52,7 @@ const HYBRID_NOTE =
 // Result interpretation is authored once and delivered with classified receipts.
 // REST and offline help retain it even when callers choose raw JSON.
 const CLASSIFIED_RESULT_DESCRIPTION = (DECISION_BLOCK_NOTE + HYBRID_NOTE).trim();
-const QUALITY_RESULT_DESCRIPTION = "qualityEvaluation separates worker-specific criteria from systemReview diagnostics. Unknown means unverified, not pass. A needs_attention system check includes a recommendation for owner review, not an applied fix. Neither layer replaces execution status or proves external effects.";
+const QUALITY_RESULT_DESCRIPTION = "qualityEvaluation separates worker criteria, code-computed executionChecks and model systemReview diagnostics. Unknown means unverified, not pass. Runtime/app failure counts may overlap; do not add them. Recovered attempts remain recorded without failing business acceptance. needs_attention includes a recommendation for owner review, not an applied fix. None proves external effects.";
 // Raw HTTP and CLI --json bodies remain unchanged; MCP/plain CLI render footers.
 function classifiedReceiptGuidance(data: unknown): string | undefined {
   if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
@@ -143,7 +144,7 @@ const getWorker: ToolDescriptor = defineTool({
   name: "worker_get",
   title: "Get Worker",
   description:
-    "Read worker detail, including all workers_list fields, timeZoneId, maxRunsPerDay, kit templateId/slug/name, hasInstruction, isProtected and jobSentence. {{scope}} readiness is ready|blocked with issues (worker_inactive, no_identity, app_not_connected with candidateProviders, no_instruction, action_connection_unavailable/action_tools_unavailable, worker_slots_pending when a required worker slot is unbound); canRun means hosted readiness, canInvoke means Action readiness. modelType: language runs prose on a model; decision runs a routing table (instruction_get/worker_run; decisionPendingSetup names unanswered setup); hybrid classifies then passes selected items to one language agent; none is Action (no model, deployment or run; worker_run/worker_deploy return 400 action_worker_requires_invoke; use worker_tools/worker_tool_call). apps[] lists enabled apps, providers and connected|needs_connection|unknown; fix needs_connection with app_connect on this worker's operator or dashboard. deployment has status/modelSlug; null means no hosted execution regardless of readiness (worker_deploy fixes it, except Action). Activity covers 30-day outcomes/success rate/cost; null when hosted runtime is disabled.",
+    "Read worker detail, including all workers_list fields, timeZoneId, maxRunsPerDay, kit templateId/slug/name, hasInstruction, isProtected and jobSentence. {{scope}} readiness is ready|blocked with issues (worker_inactive, no_identity, app_not_connected with candidateProviders, no_instruction, action_connection_unavailable/action_tools_unavailable, worker_slots_pending when a required worker slot is unbound: worker_bindings_set fills it); canRun means hosted readiness, canInvoke means Action readiness. modelType: language runs prose on a model; decision runs a routing table (instruction_get/worker_run; decisionPendingSetup names unanswered setup); hybrid classifies then passes selected items to one language agent; none is Action (no model, deployment or run; worker_run/worker_deploy return 400 action_worker_requires_invoke; use worker_tools/worker_tool_call). apps[] lists enabled apps, providers and connected|needs_connection|unknown; fix needs_connection with app_connect on this worker's operator or dashboard. deployment has status/modelSlug; null means no hosted execution regardless of readiness (worker_deploy fixes it, except Action). Activity covers 30-day outcomes/success rate/cost; null when hosted runtime is disabled.",
   auth: "manager",
   method: "get",
   schema: {
@@ -327,7 +328,7 @@ const getRun: ToolDescriptor = defineTool({
   name: "run_get",
   title: "Get Run",
   description:
-    "Read a run receipt. includeContent:false returns metadata and bounded contentReferences without copying reports; resolve report/structured with run_get(includeContent:true), transcript with run_transcript, using the same runId and current readRuns/worker authority. References grant no access. Transcript expiry is enforced at read time; reports follow receipt retention and explicit clearing. digestStructured.result is an optional v1 JSON business result: data, evidence, unresolved, completeness and self-reported acceptance. validationError means its shape failed, independently of execution status; Succeeded can still have partial coverage or a rejected business result. " + guidance.spendCap + " Fields: initiator (immediate user/fleetKey/schedule/webhook/worker; historicalUnknown when unrecorded), origin (original run and initiator), relationship (questionContinuation or workerCall), workerCalls (bounded model/Action references, modelType, operation and statuses; runId for model children or actionInvocationId/actionTool for existing Action receipts; canReadReceipt reflects existing receipt authority), status, trigger, timings, token/cost metering, billingMode Platform|Byok, byokFeeUsd, finalDigest (worker report), runPrompt/runContext, in-flight liveness live|stalled/lastActivity, errorCode/errorDetail and issues. {{scope}} Fleet-key identity is a safe id/name/prefix snapshot at start, not a credential or proof of API/CLI/OAuth transport; requestedByUserId remains the accountable user. Continuations preserve origin and record the answering key as initiator. Worker calls identify the immediate caller run and original initiator; child runs have separate charges. A worker binding shares its bounded invocation result, not full receipt/transcript access. Configure grants in Apps and workers, or explicitly bind declared kit slots during an authorized kit_install; manager run permission alone does not grant binding authority. On BYOK, modelCostUsd is provider list price, not wallet charge. Parse footprint, turnsTimeline, issues and priceSnapshot: they are raw JSON strings. Grades: selfScore, selfScoreReason, ownerScore (set with run_score)." + SCORE_NOTE + " Decision/hybrid receipts include classification, source coverage and committed wallet cost. Hybrid runs are manual/on-demand only; never automatically repeat an uncertain write." + RUNTIME_NOTE,
+    "Read a run receipt. includeContent:false returns metadata and bounded contentReferences without copying reports; resolve report/structured with run_get(includeContent:true), transcript with run_transcript, using the same runId and current readRuns/worker authority. References grant no access. Transcript expiry is enforced at read time; reports follow receipt retention and explicit clearing. digestStructured.result is an optional v1 JSON business result: data, evidence, unresolved, completeness and self-reported acceptance. validationError means its shape failed, independently of execution status; Succeeded can still have partial coverage or a rejected business result. " + guidance.spendCap + " Fields: initiator (immediate user/fleetKey/schedule/webhook/worker; historicalUnknown when unrecorded), origin (original run and initiator), relationship (questionContinuation or workerCall), workerCalls (bounded model/Action references, modelType, operation and statuses; runId for model children or actionInvocationId/actionTool for existing Action receipts; canReadReceipt reflects existing receipt authority), status, trigger, timings, token/cost metering, billingMode Platform|Byok, byokFeeUsd, finalDigest (worker report), runPrompt/runContext, in-flight liveness live|stalled/lastActivity, errorCode/errorDetail and issues. {{scope}} Fleet-key identity is a safe id/name/prefix snapshot at start, not a credential or proof of API/CLI/OAuth transport; requestedByUserId remains the accountable user. Continuations preserve origin and record the answering key as initiator. Worker calls identify the immediate caller run and original initiator; child runs have separate charges. A worker binding shares its bounded invocation result, not full receipt/transcript access. Grants are set with worker_bindings_set (manageAppsAndWorkers) or kit_install.workerBindings (installKits); run permission alone grants none. On BYOK, modelCostUsd is provider list price, not wallet charge. Parse footprint, turnsTimeline, issues and priceSnapshot: they are raw JSON strings. Grades: selfScore, selfScoreReason, ownerScore (set with run_score)." + SCORE_NOTE + " Decision/hybrid receipts include classification, source coverage and committed wallet cost. Hybrid runs are manual/on-demand only; never automatically repeat an uncertain write." + RUNTIME_NOTE,
   auth: "manager",
   method: "get",
   schema: {
@@ -1092,7 +1093,7 @@ const kitInstallPreview: ToolDescriptor = defineTool({
   name: "kit_install_preview",
   title: "Preview Kit Install",
   description:
-    "Preview the install form and account readiness; creates nothing. Call before kit_install and collect required answers. {{scope}} requiredInputs: EVERY exact key needs a human-supplied value. memorySetup: only required:true answers are mandatory. modelType language|decision|hybrid|none; decisionNarration explains classification, which acts from the first run without a chosen language model. Answer decisionSetup by key in decisionAnswers: required questions without defaults are mandatory, except appPick can wait for instruction_set. Action: actionSpec lists tools, no model/deployment; actionConnections lists Slack bots to pin via slackConnectionId. workerSlots lists the workers this kit calls (alias, modelType, operations, required): fill them with installed workers in kit_install.workerBindings, or later in Apps and workers. Choose ONE member/categorySlot in categoryChoices, preferably connected; connectionProvider requires matching operatorResources.resourceId, preferably hasActiveConnection. apps/appsNeedingConnection predict initial connections; install may proceed blocked, with human setup at connectAppsUrl. githubAccounts.id is connectionId; githubSetup provides requiredScope, discovery tools and explicitSelectionRequired: discover repos/branches, then supply githubSelection selected IDs or accounts:[] to defer. operator identifies target; limits shows currentWorkers/maxWorkers (cap causes 402); kitPageUrl is the human install page. Advisory only: installed readiness is authoritative. kit_get supplies full permissions/instruction. evaluationSpec contains public criteria copied at install; all three quality/learning gates stay off. Review worker_quality_get after install.",
+    "Preview the install form and account readiness; creates nothing. Call before kit_install and collect required answers. {{scope}} requiredInputs: EVERY exact key needs a human-supplied value. memorySetup: only required:true answers are mandatory. modelType language|decision|hybrid|none; decisionNarration explains classification, which acts from the first run without a chosen language model. Answer decisionSetup by key in decisionAnswers: required questions without defaults are mandatory, except appPick can wait for instruction_set. Action: actionSpec lists tools, no model/deployment; actionConnections lists Slack bots to pin via slackConnectionId. workerSlots lists the workers this kit calls (alias, modelType, operations, required): fill them with installed workers in kit_install.workerBindings, or later with worker_bindings_set. Choose ONE member/categorySlot in categoryChoices, preferably connected; connectionProvider requires matching operatorResources.resourceId, preferably hasActiveConnection. apps/appsNeedingConnection predict initial connections; install may proceed blocked, with human setup at connectAppsUrl. githubAccounts.id is connectionId; githubSetup provides requiredScope, discovery tools and explicitSelectionRequired: discover repos/branches, then supply githubSelection selected IDs or accounts:[] to defer. operator identifies target; limits shows currentWorkers/maxWorkers (cap causes 402); kitPageUrl is the human install page. Advisory only: installed readiness is authoritative. kit_get supplies full permissions/instruction. evaluationSpec contains public criteria copied at install; all three quality/learning gates stay off. Review worker_quality_get after install.",
   auth: "manager",
   method: "get",
   schema: {
@@ -1113,7 +1114,7 @@ const kitInstall: ToolDescriptor = defineTool({
   name: "kit_install",
   title: "Install Kit",
   description:
-    "Install a kit as a NEW worker. {{scope}} NOT idempotent: every success creates another; never retry success. After timeout, inspect workers_list (readWorkers) first. Preview first: supply every requiredInputs key in inputs (missing/unknown key: 400), required memoryAnswers, decisionAnswers and one categoryChoices entry/slot; connectionProvider also needs resourceId from operatorResources. Secrets shown ONCE: install.rawKey (worker pe_ key) and install.triggers[].signingSecret; give them to the human before discarding. Return workerUrl to the human. readiness ready|blocked includes actionable issues (app_not_connected/candidateProviders); null means the install SUCCEEDED but readiness check failed: worker_get, never reinstall. connectAppsUrl is human setup. 402 limit_exceeded is terminal: upgrade or, with human agreement, worker_delete (permanent; deleteWorkers). Rate: 10 installs/hour/account. Install never runs; without deployment no schedule fires and worker_run returns not_deployed. deploy:true optionally takes deployment(modelSlug from models_list, ceilings) ; missing deployment scope is 403 before creation. Omit deploy to install only, then seek authorized scope review before worker_deploy. Post-install deploy failure still returns 201/deploymentError: worker exists; fix and worker_deploy, never reinstall. Action(modelType none): omit deploy; worker_tools then worker_tool_call. Worker-slot kits (preview lists workerSlots): workerBindings maps each alias to an installed worker, which returns bounded results to the new worker. Install succeeds without bindings, but an unbound required slot reports readiness issue worker_slots_pending and runs are Skipped until it is bound in Apps and workers. Kit criteria copy with all three quality/learning gates off; review worker_quality_get afterwards. Install has no learning-consent options.",
+    "Install a kit as a NEW worker. {{scope}} NOT idempotent: every success creates another; never retry success. After timeout, inspect workers_list (readWorkers) first. Preview first: supply every requiredInputs key in inputs (missing/unknown key: 400), required memoryAnswers, decisionAnswers and one categoryChoices entry/slot; connectionProvider also needs resourceId from operatorResources. Install returns no worker API secret. Secret shown ONCE: install.triggers[].signingSecret; give it to the human before discarding. Return workerUrl to the human. readiness ready|blocked includes actionable issues (app_not_connected/candidateProviders); null means the install SUCCEEDED but readiness check failed: worker_get, never reinstall. connectAppsUrl is human setup. 402 limit_exceeded is terminal: upgrade or, with human agreement, worker_delete (permanent; deleteWorkers). Rate: 10 installs/hour/account. Install never runs; without deployment no schedule fires and worker_run returns not_deployed. deploy:true optionally takes deployment(modelSlug from models_list, ceilings) ; missing deployment scope is 403 before creation. Omit deploy to install only, then seek authorized scope review before worker_deploy. Post-install deploy failure still returns 201/deploymentError: worker exists; fix and worker_deploy, never reinstall. Action(modelType none): omit deploy; worker_tools then worker_tool_call. Worker-slot kits (preview lists workerSlots): workerBindings maps each alias to an installed worker, which returns bounded results to the new worker. Install succeeds without bindings, but an unbound required slot reports readiness issue worker_slots_pending and runs are Skipped until worker_bindings_set fills it. Kit criteria copy with all three quality/learning gates off; review worker_quality_get afterwards. Install has no learning-consent options.",
   auth: "manager",
   method: "post",
   schema: {
@@ -1135,7 +1136,7 @@ const kitInstall: ToolDescriptor = defineTool({
       "GitHub targets from app_github_accounts/repos/branches (discoverAppResources); preview githubAccounts[].id is connectionId. For specific jobs use selected with 1-500 stable repositoryIds. all includes future granted repos: choose only intentionally. accounts:[] defers setup. Required on GitHub kits for keys with discoverAppResources; legacy keys keep single-account fallback. Discovery/branch inputs grant no access. These owner selections never enter a published kit manifest."
     ),
     workerBindings: z.record(z.string().regex(/^[a-z][a-z0-9_]{0,19}$/), z.string().uuid()).optional().describe(
-      "Map of worker-slot alias (kit_install_preview.workerSlots) to the UUID of the installed worker that fills it. The target must be in the same account and within the caller's current owner/Admin authority and fleet-key selection; its modelType, operations and pinned contracts must match the slot. A binding shares the target's bounded results, never its private receipts. Omit to bind later in Apps and workers; an unbound required slot blocks runs. Unknown alias or refused binding: 400."
+      "Map of worker-slot alias (kit_install_preview.workerSlots) to the UUID of the installed worker that fills it. The target must be in the same account and within the caller's current owner/Admin authority and fleet-key selection; its modelType, operations and pinned contracts must match the slot. A binding shares the target's bounded results, never its private receipts. Omit to bind later with worker_bindings_set; an unbound required slot blocks runs. Unknown alias or refused binding: 400."
     ),
     categoryChoices: z.array(z.object({
       categoryCode: z.string().describe("The slot's categoryCode from the preview."),
@@ -1545,13 +1546,16 @@ const undeployWorker: ToolDescriptor = defineTool({
   annotations: DELETE,
 });
 
-// ─── Permissions (read-only) ────────────────────────────────────────────────
+// ─── Permissions and worker grants ──────────────────────────────────────────
+// The two halves of the dashboard's Apps and workers drawer. Reads ride readWorkers;
+// the writes ride manageAppsAndWorkers (install-time workerBindings stay on installKits).
+// Rules, identities and MCP tool bindings stay on the dashboard.
 
 const getWorkerPermissions: ToolDescriptor = defineTool({
   name: "worker_permissions_get",
   title: "Get Worker Permissions",
   description:
-    "Read exact worker access in kit-authoring vocabulary: app operations/fields/providers/stances, category slots, contact/timeframe/child limits and ruleCounts. {{scope}} ruleCounts reveals presence only, never rule values. No tool here edits grants: ask the human to change Apps and workers in the dashboard, then reread to verify; alternatively create different permissions via private kit_publish then kit_install. worker_clone preserves source rules; kit_publish(sourceWorkerId) does not, so kit installs can be MORE permissive than a source with rules.",
+    "Read exact worker access in kit-authoring vocabulary: app operations/fields/providers/stances, category slots, contact/timeframe/child limits and ruleCounts. {{scope}} ruleCounts reveals presence only, never rule values. Edit and write back with worker_permissions_set (account Admin), or create different permissions via private kit_publish then kit_install. worker_clone preserves source rules; kit_publish(sourceWorkerId) does not, so kit installs can be MORE permissive than a source with rules.",
   auth: "manager",
   method: "get",
   schema: {
@@ -1560,6 +1564,78 @@ const getWorkerPermissions: ToolDescriptor = defineTool({
   path: (params) => `${API}/${params.tokenId}/permissions`,
   paramFilter: () => ({}),
   annotations: READ_ONLY,
+});
+
+const setWorkerPermissions: ToolDescriptor = defineTool({
+  name: "worker_permissions_set",
+  title: "Set Worker Permissions",
+  description:
+    "Replace what the worker may touch, in the shape worker_permissions_get returns: apps is the whole app set, so an app left out is switched OFF. {{scope}} Account Admin only. An omitted axis keeps the worker's last saved value, so send every axis you mean. The stance changes only when sent: a deny-by-default app switched on here reads nothing until the owner writes rules or you send allowAll:true, and an existing allowAll is never flipped by omission. Rules, identities and MCP tool bindings stay on the dashboard. A scalar left out is unchanged; -1 clears a timeframe. 400 names the refusal: an Action worker, an unknown app or key, a Member-owned worker given an unsupported app, or a classifier losing a tool. Returns the effective permissions; confirm with the human before widening access." + NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "put",
+  schema: {
+    tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
+    apps: z.array(z.record(z.unknown())).describe(
+      "One entry per app, the kit content.apps[] shape: code (kit_vocabulary) plus optional operations, visibleFields, allowAll, writeEnabled, providers, channels, writableFields, readOperations, masterAccessLevel, objectTypes, scopePolicy, contentTypeScopes, includeSpamFolders, pastDays, capabilities. Unknown app codes or vocabulary keys: 400. search_emails implies view_email and view_thread. github switched on here admits no repository until a human selects them in the dashboard."
+    ),
+    contactAllowAll: z.boolean().optional().describe("Contact stance: true reads every sender except what contact rules block, false only what they allow. Omit to keep."),
+    blockedSenderCategories: z.array(z.string()).optional().describe("financial|healthcare|government|insurance|hr_payroll; [] blocks none. Omit to keep."),
+    timeframePastDays: z.number().int().min(-1).max(3650).optional().describe("Read window into the past, in days; -1 clears it. Omit to keep."),
+    timeframeFutureDays: z.number().int().min(-1).max(3650).optional().describe("Read window into the future, in days; -1 clears it. Omit to keep."),
+    maxChildTokens: z.number().int().min(0).optional().describe("Legacy spawned sub-worker budget; 0 = none. Omit to keep."),
+  },
+  path: (params) => `${API}/${params.tokenId}/permissions`,
+  bodyBuilder: (params) => ({
+    apps: params.apps,
+    contactAllowAll: params.contactAllowAll,
+    blockedSenderCategories: params.blockedSenderCategories,
+    timeframePastDays: params.timeframePastDays,
+    timeframeFutureDays: params.timeframeFutureDays,
+    maxChildTokens: params.maxChildTokens,
+  }),
+  annotations: UPDATE,
+});
+
+const getWorkerBindings: ToolDescriptor = defineTool({
+  name: "worker_bindings_get",
+  title: "Get Worker Bindings",
+  description:
+    "Read a worker's grants to call other workers: bindings[] (alias, target workerId and title, operations bits, revision, available), slots[] its kit declares, missingSlots[] (required slots that keep runs Skipped) and targets[] it may bind: same-account deployed Language, Decision or Hybrid workers and Action workers with tools, narrowed by search. {{scope}} Member keys see their own workers. Fill, re-point or clear an alias with worker_bindings_set.",
+  auth: "manager",
+  method: "get",
+  schema: {
+    tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
+    search: z.string().max(100).optional().describe("Case-insensitive title filter for targets; at most 50 are listed."),
+  },
+  path: (params) => `${API}/${params.tokenId}/worker-bindings`,
+  paramFilter: (params) => {
+    const { tokenId: _tokenId, ...query } = params;
+    return query;
+  },
+  annotations: READ_ONLY,
+});
+
+const setWorkerBindings: ToolDescriptor = defineTool({
+  name: "worker_bindings_set",
+  title: "Set Worker Bindings",
+  description:
+    "Fill, re-point or clear a worker's grants by alias, atomically; aliases not named are untouched. {{scope}} A declared kit slot takes the slot's operations and tools when they are omitted; a free alias needs operations, and an Action target needs actionTools. One worker fills one alias per caller: clear the old alias first, or swap both in one call. An unchanged live grant is left alone; a stale one is refreshed. Member keys bind their own workers to their own workers. 400 names the refusal. Returns worker_bindings_get." + NEW_SCOPE_NOTE,
+  auth: "manager",
+  method: "patch",
+  schema: {
+    tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
+    workerBindings: z.record(
+      z.string().regex(/^[a-z][a-z0-9_]{0,19}$/),
+      z.object({
+        workerId: z.string().uuid().describe("The worker that fills the alias (workers_list workerId): this account, within this key's reach."),
+        operations: z.number().int().min(1).max(15).optional().describe("Bits: 1 trigger, 2 trigger with prompt, 4 call tool (Action targets, alone), 8 trigger with typed input. Omit on a declared slot to take the slot's."),
+        actionTools: z.array(z.string().min(1).max(128)).min(1).max(8).optional().describe("Action targets: 1-8 of the target's saved tool refs from worker_tools. Omit on a declared slot to take the slot's."),
+      }).strict().nullable()
+    ).describe("Alias to choice, or null to clear the alias. 1-10 aliases per call."),
+  },
+  path: (params) => `${API}/${params.tokenId}/worker-bindings`,
+  bodyBuilder: (params) => ({ workerBindings: params.workerBindings }),
+  annotations: UPDATE,
 });
 
 // ─── Kits (authoring) ───────────────────────────────────────────────────────
@@ -2112,6 +2188,7 @@ const deleteMcpServer: ToolDescriptor = defineTool({
 // ─── Export ─────────────────────────────────────────────────────────────────
 
 export const manageDescriptors: readonly ToolDescriptor[] = [
+  ...apiAppDescriptors,
   ...qualityDescriptors,
   ...appDiscoveryDescriptors,
   ...onboardingDescriptors,
@@ -2169,6 +2246,9 @@ export const manageDescriptors: readonly ToolDescriptor[] = [
   getFleetBudget,
   setFleetBudget,
   getWorkerPermissions,
+  setWorkerPermissions,
+  getWorkerBindings,
+  setWorkerBindings,
   listModels,
   listDeployments,
   getDeployment,
