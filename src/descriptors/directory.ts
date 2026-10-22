@@ -19,6 +19,7 @@
 
 import { z } from "../zod.js";
 import { READ_ONLY, type ToolDescriptor } from "./types.js";
+import { publicPublisherIdentityPause } from "../guidance.js";
 
 const API = "/api/directory/mcp";
 const SITE = "https://workerkit.ai";
@@ -156,6 +157,7 @@ const searchKits: ToolDescriptor = {
   name: "kits_search",
   title: "Search Kits",
   description:
+    publicPublisherIdentityPause +
     "Search public worker templates: instructions, decision routing or Action tools, with pre-scoped app permissions and often schedules. All optional filters AND; omit to browse. Returns {items,totalCount,page,pageSize}. Cards: slug(kit_get key), name/jobSentence, publisherName/publisherSlug/isOfficialPublisher/verificationTier, apps/categorySlots(installer chooses member), categories/triggerModes, starCount, modelScores(publisher-declared 0-100 fit, best first)/recommendedModel, modelType(language|decision|hybrid|none), isProtected,isFeatured,publishedAt. Protected instruction TEXT is intentionally withheld; kit still works, not a red flag. Empty is not an error; read its footer and directory_overview for valid filters. Human page: https://workerkit.ai/kit/{slug}." + DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
@@ -184,7 +186,7 @@ const searchKits: ToolDescriptor = {
     modelType: z.enum(["none", "language", "decision", "hybrid"]).optional().describe(
       "Worker type: none=direct Action tools; language=prose with installer-chosen model; decision=per-item routing without prose/model choice; hybrid=bounded classification then one language agent. Omit for all."
     ),
-    publisher: z.string().optional().describe("Publisher slug (publisherSlug on any card) — that publisher's kits only."),
+    publisher: z.string().optional().describe("Temporarily unavailable: publisher identity is hidden, so every publisher filter returns an empty page. Omit to browse kits."),
     sort: z.enum(["downloads", "new", "name", "stars"]).default("downloads").describe(
       "downloads = most installed (the popularity signal), new = latest published, name = A-Z, stars = most starred."
     ),
@@ -231,6 +233,7 @@ const getPublisher: ToolDescriptor = {
   name: "publisher_get",
   title: "Get Publisher",
   description:
+    publicPublisherIdentityPause +
     "Inspect a publisher and its published kits for the 'who is behind this?' check. Returns {publisher,kits,pageUrl}. publisher: name,isOfficial(WorkerKit), xHandle(x.com),gitHubHandle(github.com),linkedInUrl,description,createDate(member since),kitCount(published only). kits uses the paginated kits_search card shape, scoped to this publisher. 404:unknown publisher or none currently published." + DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",

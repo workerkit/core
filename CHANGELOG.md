@@ -6,6 +6,18 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.20] - 2026-10-21
+
+### Added
+
+- `activity_feed` reads the runs, app calls and configuration changes of the workers a key reaches as one newest-first, cursor-paged feed with one flat row shape; `kind`, `outcome`, `workerId`, `since` and `until` narrow it. App calls go back as far as the plan's log window, reported as `callsSinceUtc`. `activity_summary` counts the same activity over a window, with the busiest apps and tools. Both require `readRuns`.
+- `account_spend` reads this UTC day's and month's run spend with its split by worker, day and model, on the basis the budget gates use. The wallet's own charges for the month are included when the key reaches the whole account. Requires `manageBudgets`.
+
+### Changed
+
+- Public kit publishing is temporarily paused. `kit_validate`, `kit_publish`, `kit_replace` and `kit_relist` say so, and the `visibility` parameter tells agents to send `private` explicitly, because an omitted visibility means public and is refused. The manager and directory instructions carry the same rule.
+- `kits_search` and `publisher_get` explain that public publisher identity is hidden: `publisherName` is empty, `publisherSlug` is null and `isOfficialPublisher` is false, public publisher profiles return 404 and the `publisher` filter matches nothing. Owners still manage their own publisher profile.
+
 ## [0.3.19] - 2026-10-21
 
 ### Added

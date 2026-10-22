@@ -4,6 +4,8 @@
  * discoverable tools; initialize instructions supplement their delivery.
  */
 const NO_AUTO_403 = "Never automatically retry a 403";
+export const publicKitPublishingPause = "Public kit publishing is temporarily disabled, including promotion, public replacement and relisting. Explicitly send visibility:'private'; omitted visibility requests public and is refused. Private kits remain available. Public lifecycle details below apply only after publishing reopens. ";
+export const publicPublisherIdentityPause = "Public publisher identity is temporarily hidden: publisherName is empty, publisherSlug is null and isOfficialPublisher is false. Public publisher profiles return 404 and publisher filters match nothing. Owner publisher-profile management remains available. ";
 export const workerCreationTimezoneHint = "The worker's timezone, as an IANA id such as America/New_York. Ask the worker creator for it if it is not already known; never guess it from connected calendars or the server's clock. Omitted means UTC.";
 export const runModelHint = "Language/hybrid only: catalog slug or reviewed family alias, resolved and checked for enabled provider/tier on THIS run. Never changes the stored deployment model. Omit to use it.";
 export const scopeReviewAction = "Ask the credential owner or an account Admin to review scopes/selection at {appUrl}, within the existing grant ceiling and current member authority. An authorized edit can update an existing key; expanding beyond an agent grant requires fresh consent.";

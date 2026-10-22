@@ -6,7 +6,7 @@
 [![license](https://img.shields.io/npm/l/%40workerkit%2Fcore.svg)](LICENSE)
 
 The [WorkerKit](https://workerkit.ai) API client and tool registry for Node.js.
-It provides 112 authenticated management tools, 8 anonymous directory tools,
+It provides 115 authenticated management tools, 8 anonymous directory tools,
 and a shared execution engine for their HTTP requests.
 
 Descriptors include agent guidance, annotations and Zod input schemas. MCP
@@ -67,6 +67,16 @@ The client ships sensible production defaults: per-attempt timeouts under a
 whole-call deadline, bounded retries for idempotent methods only, a streamed
 response-size cap, and quota/rate-limit header extraction. `scrubSecrets` helps
 keep credentials out of logs.
+
+## Kit publishing
+
+Public kit publishing is temporarily paused, including promotion of a private
+kit, public replacement and relisting. Send `visibility: "private"` explicitly
+to `kit_validate`, `kit_publish` and `kit_replace`; an omitted visibility
+means public and is refused. Private kits publish and install as before.
+Public publisher identity is also hidden: catalog entries carry no publisher
+attribution and public publisher profiles return 404. Owners still manage
+their own publisher profile.
 
 ## Author API apps
 

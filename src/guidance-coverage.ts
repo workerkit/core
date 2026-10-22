@@ -77,7 +77,7 @@ export const guidanceCoverage: readonly GuidanceRule[] = [
   ] },
   { id: "FLEET-01", owner: "budget_get", checks: [
     d("budget_get", ["Null maxRunsPerDay means PLATFORM DEFAULT, not unlimited", "hasDeployment:false", "not a zero spending cap"]),
-    d("fleet_budget_get", ["modelCostUsd \\+ byokFeeUsd", "BYOK provider list cost and FreeRun usage", "not wallet charges"]),
+    ...["fleet_budget_get", "account_spend"].map(tool => d(tool, ["modelCostUsd \\+ byokFeeUsd", "BYOK provider list cost and FreeRun usage", "not wallet charges"])),
     d("fleet_pulse", ["QUEUED, not working", "startedAtUtc is null"]),
   ] },
   { id: "KIT-01", owner: "kit_get", checks: [

@@ -13,7 +13,7 @@ import { onboardingDescriptors } from "./onboarding.js";
 import { supportDescriptors } from "./support.js";
 import { qualityDescriptors } from "./quality.js";
 import { z } from "../zod.js";
-import { guidance, scopeReviewAction, runModelHint } from "../guidance.js";
+import { guidance, scopeReviewAction, runModelHint, publicKitPublishingPause } from "../guidance.js";
 import { defineTool, CREATE, DELETE, READ_ONLY, TRIGGER, UPDATE, type ToolDescriptor } from "./types.js";
 
 // The graded-outcome vocabulary, taught wherever a score can be read or written.
@@ -137,6 +137,67 @@ const accountUsage: ToolDescriptor = defineTool({
   method: "get",
   schema: {},
   path: `${API}/account/usage`,
+  annotations: READ_ONLY,
+});
+
+const accountSpend: ToolDescriptor = defineTool({
+  name: "account_spend",
+  title: "Account Spend",
+  description:
+    "Read run spend this UTC day and month across reachable workers. {{scope}} Returns spentTodayUsd/spentThisMonthUsd, reservedInFlightUsd, runsToday/runsThisMonth/runsInFlight, byWorker (workers with runs or spend this month, highest first), byDay (this month per UTC day) and byModel (null modelSlug = classifier runs). Figures sum receipt modelCostUsd + byokFeeUsd across billing modes, including BYOK provider list cost and FreeRun usage; they are not wallet charges. walletChargedThisMonthUsd is what the wallet paid, appUsageThisMonthUsd its metered-app share; both null unless the key reaches the whole account. Ceilings: fleet_budget_get, budget_get." + RUNTIME_NOTE,
+  auth: "manager",
+  method: "get",
+  schema: {},
+  path: `${API}/account/spend`,
+  annotations: READ_ONLY,
+});
+
+// ─── Activity ───────────────────────────────────────────────────────────────
+// The dashboard's activity feed: runs, the app calls workers make through the firewall, and
+// configuration changes, merged newest first. Rows are one flat shape; money stays on receipts.
+
+const ACTIVITY_WORKER_HINT =
+  "Only this worker's activity, by workerId from workers_list. An unknown or unreachable id returns nothing.";
+
+const activityFeed: ToolDescriptor = defineTool({
+  name: "activity_feed",
+  title: "Activity Feed",
+  description:
+    "Read reachable workers' runs, app calls and configuration changes in one newest-first feed. {{scope}} Items: kind run|call|change, at, outcome, title, detail, workerId/tokenId/workerTitle, app, runId, actor/actorName. outcome: ok; attention = run succeeded with friction or awaits input, or call allowed with data protected; failed; blocked = call denied by the firewall; skipped (runs, including canceled); running; info (changes). App calls start at callsSinceUtc, the plan's log window. Account-level changes need whole-account reach. Page with nextCursor while hasMore; on 400 invalid_cursor restart without it. No costs: account_spend.",
+  auth: "manager",
+  method: "get",
+  schema: {
+    kind: z.enum(["run", "call", "change"]).optional().describe(
+      "Only this kind: run, call (app calls workers made through the firewall) or change (configuration changes). Omit for all."
+    ),
+    outcome: z.enum(["ok", "attention", "failed", "blocked", "skipped", "running", "info"]).optional().describe(
+      "Only rows with this outcome. blocked applies to calls, skipped and running to runs, info to changes."
+    ),
+    workerId: z.string().uuid().optional().describe(ACTIVITY_WORKER_HINT),
+    since: z.string().optional().describe(`Only activity at or after this time. ${UTC_HINT}`),
+    until: z.string().optional().describe(`Only activity before this time. ${UTC_HINT}`),
+    cursor: z.string().optional().describe(
+      "Opaque cursor from the previous response's nextCursor; fetches the next (older) page. Omit to read the newest activity."
+    ),
+    limit: z.number().int().min(1).max(100).default(20).describe("Rows per page (1–100)."),
+  },
+  path: `${API}/activity`,
+  annotations: READ_ONLY,
+});
+
+const activitySummary: ToolDescriptor = defineTool({
+  name: "activity_summary",
+  title: "Activity Summary",
+  description:
+    "Count reachable workers' activity over a window in one call. {{scope}} Returns window (start, end, plan tier), runs (total, running, succeeded, attention, failed, skipped), calls (total, allowed, protected, blocked, failed), changes, and the busiest apps (byApp) and tools (byTool) with the same call counts. protected = allowed with data masked or redacted; blocked = denied by the firewall. The window starts at since, or at the plan's log window when since is omitted or older, and ends at until or now. Rows: activity_feed.",
+  auth: "manager",
+  method: "get",
+  schema: {
+    workerId: z.string().uuid().optional().describe(ACTIVITY_WORKER_HINT),
+    since: z.string().optional().describe(`Window start; omit for the plan's full log window. ${UTC_HINT}`),
+    until: z.string().optional().describe(`Window end; omit for now. ${UTC_HINT}`),
+  },
+  path: `${API}/activity/summary`,
   annotations: READ_ONLY,
 });
 
@@ -1675,6 +1736,7 @@ const LISTING_SCHEMA = {
     "1-8 browse-category slugs from kit_vocabulary's categories (jobFamilies / roles / industries). An unknown slug fails the publish."
   ),
   visibility: z.enum(["public", "private"]).optional().describe(
+    publicKitPublishingPause +
     "'private' (recommended first) = installable only by this account, no supply-chain scan; 'public' (default) = listed in the directory after the fail-closed scan."
   ),
   isProtected: z.boolean().optional().describe(
@@ -1755,6 +1817,7 @@ const validateKit: ToolDescriptor = defineTool({
   name: "kit_validate",
   title: "Validate Kit",
   description:
+    publicKitPublishingPause +
     "Dry-run the exact kit_publish body; creates nothing. {{scope}} canPublish is the verdict; errors/warnings identify every failing section (publishing stops at the first), lintWarnings are advisory. Includes inferred requiredInputs, appLabels, normalized memorySetup and exact manifestPreview. Validates as PUBLIC even for private bodies, except the public-kit cap follows visibility (private unlimited). Authored content only; sourceWorkerId is 400. For kit_replace, pass kitRef so the 100-public-kit cap and republish rules use that listing. Repeat until canPublish, then publish the identical body." + AUTHORING_FLOW_NOTE,
   auth: "manager",
   method: "post",
@@ -1778,6 +1841,7 @@ const publishKit: ToolDescriptor = defineTool({
   name: "kit_publish",
   title: "Publish Kit",
   description:
+    publicKitPublishingPause +
     "Publish a NEW kit. {{scope}} Exactly one of authored content or sourceWorkerId (reachable worker; outside selection:404). Source copies instruction/text/permissions/schedules/triggers, but never rule VALUES, only their existence. Protected-kit source text:403, never retry. NOT idempotent: never retry success; on timeout inspect my_kits_list. Private (recommended first) installs only within this account; kit_install its slug to create a worker. Public is default and requires fail-closed scanning;503 kit_scan_unavailable:retry later with SAME body or publish private. 400 names first rule failure; kit_validate shows all. First-publish publisherName conflict:409. Limits:20 publishes/hour/account and100 public kits; unlisted/admin-removed keep slots, private unlimited. After public success, semantic scanning can still flag the listing minutes later: my_kits_list/kit_scan_get." + AUTHORING_FLOW_NOTE,
   auth: "manager",
   method: "post",
@@ -1849,6 +1913,7 @@ const replaceKit: ToolDescriptor = defineTool({
   name: "kit_replace",
   title: "Replace Kit",
   description:
+    publicKitPublishingPause +
     "Replace complete authored content using kit_publish's body; content required, sourceWorkerId forbidden. {{scope}} Also replaces schedules/triggers/usage windows/trigger modes. visibility promotes private to public (scan and public-kit-cap check) or demotes; existing public-lane kits keep their slot. Omitted/null timeframe bounds, blockedSenderCategories and mcpServers carry over. Kit contact allow-all is fixed, not editable. Already-public slugs stay fixed; born-private gets its clean slug on first public release. Admin-removed/taken-down listing:400. First kit_validate this exact body with kitRef." + NEW_SCOPE_NOTE,
   auth: "manager",
   method: "put",
@@ -1893,6 +1958,7 @@ const relistKit: ToolDescriptor = defineTool({
   name: "kit_relist",
   title: "Relist Kit",
   description:
+    publicKitPublishingPause +
     "Restore an UNLISTED kit to the public directory. Re-runs the fail-closed supply-chain scan (503 kit_scan_unavailable = retry later; nothing changed). Only for an unlisted kit — a PRIVATE kit goes public through kit_replace with visibility 'public'. {{scope}}" +
     NEW_SCOPE_NOTE,
   auth: "manager",
@@ -2205,6 +2271,9 @@ export const manageDescriptors: readonly ToolDescriptor[] = [
   fleetPulse,
   fleetHealth,
   accountUsage,
+  accountSpend,
+  activityFeed,
+  activitySummary,
   listRuns,
   getRun,
   getRunEvents,

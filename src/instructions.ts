@@ -1,9 +1,10 @@
 // Generated from the backend agent contract. Edit the backend source and re-import; do not edit here.
-import { guidance as g } from "./guidance.js";
+import { guidance as g, publicKitPublishingPause, publicPublisherIdentityPause } from "./guidance.js";
 
 export const workersInstructions = [
   "WorkerKit Manager: create, configure, run and watch AI workers. Call key_info first for scopes and worker reach.",
   g.authority, g.skipped, g.uncertainWrite, g.sourceEvidence,
+  "\n- Public publishing, promotion and relisting are paused; explicitly use visibility:'private' for kit publish, replace and validate.",
   "\n- " + g.scopeSnapshot + " " + g.workerReach,
   "\n- Find worker identifiers with workers_list; use the input schema's identifier type. " + g.creation,
   "\n- " + g.action + " " + g.actionReplay,
@@ -28,8 +29,9 @@ export const decisionInstructions = [
 
 export const directoryInstructions = [
   "WorkerKit Directory: " + g.directory + " Nothing on this mount installs or publishes. " + g.sourceEvidence,
+  "\n- " + publicPublisherIdentityPause + publicKitPublishingPause,
   "\n- Use directory_overview for filter vocabulary, kits_search to shortlist and kit_get to inspect exact permissions and content. Protected text is intentionally withheld.",
-  "\n- Before authoring, read kit_authoring_guide (index, then relevant schema and rules), kit_vocabulary and kit_app_tools. Validate and publish with publishKits on the Manager mount. Publish private and prove the installed worker before going public.",
+  "\n- Before authoring, read kit_authoring_guide (index, then relevant schema and rules), kit_vocabulary and kit_app_tools. Validate and publish with publishKits on the Manager mount. Publish private and prove the installed worker; public publishing is temporarily paused.",
   "\n- Language kits contain instructions; decision kits contain classification rules; hybrid combines them. Action kits expose selected tools without a model and are never deployed or run.",
   "\n- Read workerkit_about first for product context and when to use a worker.",
 ].join(" ");

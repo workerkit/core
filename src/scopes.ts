@@ -17,7 +17,7 @@ export type ScopeRequirement =
 const groups: Partial<Record<ManagerScope, readonly string[]>> = {
   managePrivateApiApps: ["api_app_create","api_app_update","api_app_validate","api_app_preview","api_app_publish","api_app_version_get","api_app_version_revoke"],
   readWorkers: ["workers_list","worker_get","fleet_health","account_usage","memory_get","schedules_list","delivery_list","delivery_channels","instruction_get","instruction_versions","instruction_version_get","models_list","deployments_list","deployment_get","worker_permissions_get","worker_bindings_get","publisher_get_mine","my_kits_list","kit_scan_get","apps_list","model_keys_list","mcp_servers_list","mcp_server_get","action_worker_options","worker_tools","worker_quality_get"],
-  readRuns: ["worker_runs","runs_feed","fleet_pulse","run_get","run_events","run_transcript","run_question"],
+  readRuns: ["worker_runs","runs_feed","fleet_pulse","activity_feed","activity_summary","run_get","run_events","run_transcript","run_question"],
   runWorkers: ["worker_run","run_bulk","run_answer","run_cancel"],
   manageMemory: ["memory_add","memory_update","memory_delete","run_clear_digest","run_score"],
   manageSchedules: ["worker_timezone_set","schedule_create","schedule_update","schedule_delete"],
@@ -25,7 +25,7 @@ const groups: Partial<Record<ManagerScope, readonly string[]>> = {
   manageState: ["worker_set_enabled"],
   installKits: ["kit_install_preview"],
   manageDeliveries: ["delivery_create","delivery_update","delivery_secret_rotate","delivery_delete"],
-  manageBudgets: ["budget_get","budget_set","fleet_budget_get","fleet_budget_set"],
+  manageBudgets: ["budget_get","budget_set","fleet_budget_get","fleet_budget_set","account_spend"],
   createWorkers: ["action_worker_create","worker_clone_preview","worker_clone","worker_clone_bulk"],
   publishKits: ["publisher_set","kit_validate","kit_publish","kit_update","kit_replace","kit_unpublish","kit_relist","kit_make_private","kit_delete"],
   manageConnections: ["app_connect","app_disconnect","model_key_set","model_key_delete","mcp_server_create","mcp_server_discover","mcp_server_set_tools","mcp_server_delete"],

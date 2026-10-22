@@ -11,7 +11,7 @@ import {
   type ToolDescriptor,
 } from "../src/index.js";
 
-// The wire contract, pinned per descriptor: for all 120 tools, executeTool
+// The wire contract, pinned per descriptor: for all 123 tools, executeTool
 // against a recording fake client must produce exactly the {method, path,
 // query/opts, body} the live server produces today. Expected values are
 // derived from the server suite's manage-tools/directory tests so the two
@@ -68,12 +68,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 112 manager + 8 anonymous descriptors, names unique, byName agrees", () => {
-    expect(manageDescriptors).toHaveLength(112);
+  it("ships exactly 115 manager + 8 anonymous descriptors, names unique, byName agrees", () => {
+    expect(manageDescriptors).toHaveLength(115);
     expect(directoryDescriptors).toHaveLength(8);
-    expect(allDescriptors).toHaveLength(120);
+    expect(allDescriptors).toHaveLength(123);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(120);
+    expect(new Set(names).size).toBe(123);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -82,7 +82,7 @@ describe("registry", () => {
     for (const descriptor of directoryDescriptors) expect(descriptor.auth).toBe("anonymous");
   });
 
-  it("pins {auth, method} for every one of the 120 descriptors", () => {
+  it("pins {auth, method} for every one of the 123 descriptors", () => {
     // The full name → auth/method table. A new/renamed tool or a changed verb
     // must show up here explicitly — no descriptor ships with an unpinned method.
     expect(
@@ -123,6 +123,9 @@ describe("registry", () => {
         "fleet_pulse manager get",
         "fleet_health manager get",
         "account_usage manager get",
+        "account_spend manager get",
+        "activity_feed manager get",
+        "activity_summary manager get",
         "worker_runs manager get",
         "run_get manager get",
         "run_events manager get",
@@ -232,7 +235,22 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
     expect(f.opts.params).toEqual({ status: "active", deployed: false, readiness: "blocked", q: "invoice" });
   });
 
-  it("fleet_health and account_usage GET their account-wide routes with an empty query", async () => {
+  it("activity reads preserve filters, cursor and defaults on their GET routes", async () => {
+    const workerId = "44444444-4444-4444-8444-444444444444";
+    const params = z.object(d("activity_feed").schema).parse({
+      kind: "call", outcome: "blocked", workerId, since: "2026-10-20T00:00:00Z", until: "2026-10-21T00:00:00Z", cursor: "older-page",
+    });
+    const feed = await run(d("activity_feed"), params, "manager");
+    expect(feed).toEqual({ method: "get", path: "/api/manage/workers/activity", opts: { params: { ...params, limit: 20 }, token: "manager" } });
+    const summary = await run(d("activity_summary"), { workerId, since: params.since, until: params.until }, "manager");
+    expect(summary.path).toBe("/api/manage/workers/activity/summary");
+    expect(summary.opts.params).toEqual({ workerId, since: params.since, until: params.until });
+    for (const invalid of [{ kind: "2" }, { kind: "delivery" }, { outcome: "ok,attention" }, { outcome: "pending" }, { limit: 101 }, { workerId: "42" }]) {
+      expect(z.object(d("activity_feed").schema).safeParse(invalid).success).toBe(false);
+    }
+  });
+
+  it("fleet_health, account_usage and account_spend GET their account-wide routes with an empty query", async () => {
     const h = await run(d("fleet_health"), {});
     expect(h.method).toBe("get");
     expect(h.path).toBe("/api/manage/workers/fleet/health");
@@ -242,6 +260,9 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
     expect(u.method).toBe("get");
     expect(u.path).toBe("/api/manage/workers/account/usage");
     expect(u.opts.params).toEqual({});
+
+    const spend = await run(d("account_spend"), {}, "manager");
+    expect(spend).toEqual({ method: "get", path: "/api/manage/workers/account/spend", opts: { params: {}, token: "manager" } });
   });
 
   it("runs_feed and worker_runs both accept awaitingInput as a status", () => {

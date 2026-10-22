@@ -3,7 +3,7 @@ import { allDescriptors, byName } from "./descriptors/index.js";
 import { manageTextFragments } from "./descriptors/manage.js";
 import { githubPagingText } from "./descriptors/app-discovery.js";
 import { apiAppOperationsText } from "./descriptors/api-apps.js";
-import { guidance, workerCreationTimezoneHint, runModelHint } from "./guidance.js";
+import { guidance, workerCreationTimezoneHint, runModelHint, publicPublisherIdentityPause } from "./guidance.js";
 
 /** Advisory reporting policy; never truncate or remove text to meet these values. */
 const complexTools = new Set(["worker_run", "kit_install", "kit_install_preview", "kit_publish", "kit_validate", "delivery_create", "worker_deploy", "mcp_server_create"]);
@@ -70,4 +70,5 @@ export const reviewedTextFragments: Readonly<Record<string, ReviewedTextFragment
   "schema.run.model": fragment(runModelHint,"MONEY-01",["worker_run.properties.modelSlug","run_bulk.properties.workers.items.properties.modelSlug"],"A per-run override does not edit the saved deployment, in single or bulk execution."),
   "schema.quality.spec": fragment(param("worker_quality_preview","spec"),"QUALITY-01",["worker_quality_preview.properties.spec","worker_quality_set.properties.evaluationSpec"],"Preview and save accept the same definition shape, and either can be discovered without the other."),
   "schema.apiApp.operations": fragment(apiAppOperationsText,"APIAPP-01",["api_app_validate","api_app_preview","api_app_create","api_app_update"].map(t=>`${t}.properties.definition.properties.operations`),"Validate, preview, create and update accept the same closed operation shape, and each can be discovered without the others."),
+  "guidance.directory.publisherIdentity": fragment(publicPublisherIdentityPause,"DIRECTORY-01",["kits_search","publisher_get"],"Search cards carry the blank publisher fields and profile lookups return 404, and either tool can be discovered without the other."),
 };
