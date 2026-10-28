@@ -6,7 +6,7 @@
 [![license](https://img.shields.io/npm/l/%40workerkit%2Fcore.svg)](LICENSE)
 
 The [WorkerKit](https://workerkit.ai) API client and tool registry for Node.js.
-It provides 115 authenticated management tools, 8 anonymous directory tools,
+It provides 121 authenticated management tools, 8 anonymous directory tools,
 and a shared execution engine for their HTTP requests.
 
 Descriptors include agent guidance, annotations and Zod input schemas. MCP
@@ -259,6 +259,12 @@ gate off. Automatic improvement and shared learning are enabled only in the
 owner dashboard, which also holds paid comparisons, diagnosis, monitoring and
 apply/rollback. Improvements change instruction text only; shadow learning
 does not train model weights. These tools are on the full profile.
+
+## Company knowledge
+
+The Knowledge descriptors expose source discovery, lexical search/browse, complete versioned content reads and change reconciliation. `toolsForProfile("knowledge")` returns the six of them for the dedicated Knowledge MCP mount; the workers and decision profiles do not carry them. Use `knowledge_sources`, `knowledge_search`, `knowledge_get` and `knowledge_changes` with `readKnowledge`. The service enforces current account, publication, audience and credential limits. `knowledge_configuration_get` and `knowledge_configuration_set` require `manageKnowledge`, account administrator authority and an unrestricted credential.
+
+Query planning and synthesis belong to the consuming agent. Empty queries browse; changed or revoked evidence requires citation/cache reconciliation. Retrieval does not invoke a model or grant live source-app access.
 
 ## Development
 

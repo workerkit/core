@@ -35,9 +35,19 @@ export const directoryInstructions = [
   "\n- Language kits contain instructions; decision kits contain classification rules; hybrid combines them. Action kits expose selected tools without a model and are never deployed or run.",
   "\n- Read workerkit_about first for product context and when to use a worker.",
 ].join(" ");
-export type ToolProfile = "workers" | "decision" | "directory";
+
+export const knowledgeInstructions = [
+  "WorkerKit Knowledge: discover, search and read the reports your company's workers have already produced, and reconcile what changed. " + g.sourceEvidence,
+  g.authority,
+  "\n- " + g.scopeSnapshot + " Reads need readKnowledge; configuration needs manageKnowledge with account administrator authority and an unrestricted credential. Only retained reports are retrieved: no app data, transcripts, worker runs or worker management.",
+  "\n- Start with knowledge_sources, search or browse with knowledge_search, then read complete evidence with knowledge_get and cite its version. Search is lexical: try wording variants or browse by source and date before concluding that nothing exists.",
+  "\n- knowledge_changes is the incremental scan: process a page, then save nextCursor. Restart on cursor_invalid or cursor_stale and discard evidence that is no longer readable.",
+  "\n- Fleet operations, kit authoring and worker identifiers are on the Workers mount; workers_list there names the workerId UUIDs an administrator enrolls or grants.",
+].join(" ");
+
+export type ToolProfile = "workers" | "decision" | "directory" | "knowledge";
 export const instructionsByProfile = {
-  workers:workersInstructions, decision:decisionInstructions, directory:directoryInstructions,
+  workers:workersInstructions, decision:decisionInstructions, directory:directoryInstructions, knowledge:knowledgeInstructions,
 } as const;
 
 // REST has its own identity, authentication and wire conventions. These blocks
@@ -59,6 +69,7 @@ export const restInstructions = {
   workers: [
     productPurpose,
     "This Workers API manages fleet, runs, memory, schedules, instructions, state, clones, budgets, kits, app connections, custom MCP servers and model-provider keys. Call key_info first for this credential's scopes and worker reach.",
+    "Company Knowledge uses the same key: readKnowledge discovers, searches and reads published worker reports (knowledge_sources, knowledge_search, knowledge_get, knowledge_changes); manageKnowledge replaces publication and audience settings as an account administrator. Its MCP tools are served on the separate Knowledge mount.",
     g.authority, g.scopeSnapshot, g.workerReach, g.skipped, g.uncertainWrite, g.sourceEvidence,
     "Authenticate with a manager key or OAuth 2.1. " + restTransportGuidance.managerKey + " " + restTransportGuidance.oauth,
     "A private kit plus kit_install creates a worker, alongside action_worker_create and decision_worker_create. Language kits contain prose, decision kits contain classification/routing rules, hybrid combines both, and Action kits contain selected tools without a model. Before authoring, read the anonymous Directory API's kit_authoring_guide (index, then relevant sections), kit_app_tools and kit_vocabulary; validate the exact body before publishing. " + g.creation,

@@ -6,6 +6,20 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.21] - 2026-10-27
+
+### Added
+
+- Company Knowledge: `knowledge_sources` discovers the workers whose retained reports a key may read, `knowledge_search` runs a deterministic lexical search or browses by filters, `knowledge_get` reads complete versioned report or structured content with offset continuation, and `knowledge_changes` reconciles new, corrected and withdrawn outputs through a durable cursor. All four require the new `readKnowledge` scope. Retrieval returns retained reports only, never app data, transcripts or a worker run.
+- `knowledge_configuration_get` and `knowledge_configuration_set` read and replace activation, enrolled sources, structured-output publication, history start and reader grants. They require the new `manageKnowledge` scope, account administrator authority and an unrestricted credential. Existing keys gain neither scope without explicit re-scoping.
+- The `knowledge` profile serves those six tools for the dedicated Knowledge MCP mount, with its own instructions; the workers and decision profiles do not carry them. The backend contract gains the `KNOWLEDGE-01` coverage rule for evidence, cursor and configuration guidance.
+
+### Changed
+
+- `mcp_server_discover` is titled Refresh MCP Server Tools and says that it changes the saved tool catalog from upstream and is for the creator or an account Admin; `mcp_server_get` is the saved read. `mcp_server_create` explains that initial discovery is included when credentials are available or no authentication is needed, so a successful registration needs no second refresh.
+- `app_connect` reports failed MCP discovery after credential storage as a nonfatal warning and says that only new account MCP apps need `mcp_server_create`. `apps_list` points to `api_apps_list` for API apps and to `mcp_servers_list` for unpublished own servers.
+- The Workers REST instructions describe the Company Knowledge scopes and tools and where their MCP mount lives.
+
 ## [0.3.20] - 2026-10-21
 
 ### Added

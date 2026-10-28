@@ -13,8 +13,15 @@ export const decisionToolNames = [
   "support_request_create","worker_timezone_set",
 ] as const;
 
+// Company Knowledge has its own MCP mount; the fleet profiles carry every other manager tool.
+export const knowledgeToolNames = [
+  "knowledge_sources","knowledge_search","knowledge_get","knowledge_changes","knowledge_configuration_get","knowledge_configuration_set",
+] as const;
+
 export function toolsForProfile(profile:ToolProfile): readonly ToolDescriptor[] {
   if (profile==="directory") return directoryDescriptors;
-  const full = [...manageDescriptors, ...directoryDescriptors.filter(d=>(workersDirectoryToolNames as readonly string[]).includes(d.name))];
+  const knowledge = manageDescriptors.filter(d=>(knowledgeToolNames as readonly string[]).includes(d.name));
+  if (profile==="knowledge") return knowledge;
+  const full = [...manageDescriptors.filter(d=>!knowledge.includes(d)), ...directoryDescriptors.filter(d=>(workersDirectoryToolNames as readonly string[]).includes(d.name))];
   return profile==="workers" ? full : full.filter(d=>(decisionToolNames as readonly string[]).includes(d.name));
 }

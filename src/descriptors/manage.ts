@@ -12,6 +12,7 @@ import { createDecisionWorker } from "./decision-authoring.js";
 import { onboardingDescriptors } from "./onboarding.js";
 import { supportDescriptors } from "./support.js";
 import { qualityDescriptors } from "./quality.js";
+import { knowledgeDescriptors } from "./knowledge.js";
 import { z } from "../zod.js";
 import { guidance, scopeReviewAction, runModelHint, publicKitPublishingPause } from "../guidance.js";
 import { defineTool, CREATE, DELETE, READ_ONLY, TRIGGER, UPDATE, type ToolDescriptor } from "./types.js";
@@ -2016,7 +2017,7 @@ const listApps: ToolDescriptor = defineTool({
   name: "apps_list",
   title: "List Connected Apps",
   description:
-    "Inspect operator app connections before install/publish or after app_not_connected. {{scope}} Never returns secrets. apps[] uses kit app codes: connected means ACTIVE connection or platform credential; providers and connect[] explain setup. auth credential -> app_connect with fields{name,required,secret,hint}; oauth -> human at url (Google/Microsoft/GitHub/Reddit/OAuth gateways); platform -> no setup; admin -> connected for everyone. scope operator|account: account credentials serve all operators; help locates secrets. MCP entries also carry connected per gateway. customMcp lists PUBLISHED platform/own MCP apps; add unsupported apps via mcp_server_create. connections[]: provider/id (app_disconnect.connectionId), apps (one Google connection serves email/calendar/drive), name, operatorId(null=account), status(ACTIVE/REQUIRES_REAUTH/EXPIRED/etc), requiresReauth(reconnect rejected credential), deletable(false=dashboard only). operators[] lists active operators/isDefault; operatorId selects another. warnings identifies failed family reads: rows are MISSING, not evidence of absence; retry the read before concluding.",
+    "Inspect native/MCP connections before install/publish or after app_not_connected; API apps use api_apps_list. {{scope}} Never returns secrets. apps[] uses kit app codes: connected means ACTIVE connection or platform credential; providers and connect[] explain setup. auth credential -> app_connect with fields{name,required,secret,hint}; oauth -> human at url (Google/Microsoft/GitHub/Reddit/OAuth gateways); platform -> no setup; admin -> connected for everyone. scope operator|account: account credentials serve all operators; help locates secrets. MCP entries also carry connected per gateway. customMcp lists PUBLISHED platform/own MCP apps; mcp_servers_list includes unpublished own servers. Add via mcp_server_create. connections[]: provider/id (app_disconnect.connectionId), apps (one Google connection serves email/calendar/drive), name, operatorId(null=account), status(ACTIVE/REQUIRES_REAUTH/EXPIRED/etc), requiresReauth(reconnect rejected credential), deletable(false=dashboard only). operators[] lists active operators/isDefault; operatorId selects another. warnings identifies failed family reads: rows are MISSING, not evidence of absence; retry the read before concluding.",
   auth: "manager",
   method: "get",
   schema: {
@@ -2030,7 +2031,7 @@ const connectApp: ToolDescriptor = defineTool({
   name: "app_connect",
   title: "Connect App",
   description:
-    "Connect or replace an operator app credential. {{scope}} Use apps_list.connect recipes with auth:credential; live-probed before storage, encrypted, never returned. Returns201 connection(id for app_disconnect) and nonfatal warnings, often missing provider scopes. Own MCP credentialScope:account updates the shared credential; add unsupported apps first via mcp_server_create. Errors:400 credential_invalid(fix value,never retry unchanged),502 provider_unavailable(retry SAME request later),400 dashboard_only(human at returned OAuth URL),nothing_to_connect(platform app),managed_by_admin(org-wide platform MCP),404 unknown mcp:<slug>,422 unsupported_provider(environment). Limit: 30 connects/hour/account.",
+    "Connect or replace an operator app credential. {{scope}} Use apps_list.connect recipes with auth:credential; live-probed before storage, encrypted, never returned. Returns201 connection(id for app_disconnect) and nonfatal warnings: missing scopes or failed MCP discovery after credential storage. MCP setup includes discovery when needed; use mcp_server_get for saved own-server tools. Own MCP credentialScope:account updates the shared credential. Only new account MCP apps need mcp_server_create; connect existing platform/own apps directly. Errors:400 credential_invalid(fix value,never retry unchanged),502 provider_unavailable(retry SAME request later),400 dashboard_only(human at returned OAuth URL),nothing_to_connect(platform app),managed_by_admin(org-wide platform MCP),404 unknown mcp:<slug>,422 unsupported_provider(environment). Limit: 30 connects/hour/account.",
   auth: "manager",
   method: "post",
   schema: {
@@ -2146,7 +2147,7 @@ const getMcpServer: ToolDescriptor = defineTool({
   name: "mcp_server_get",
   title: "Get MCP Server",
   description:
-    "One of this account's MCP servers, with every discovered tool (the same shape as a mcp_servers_list entry). 404 not_found = no such server on this account. {{scope}}",
+    "Read this account's saved MCP server and every discovered tool (same shape as a mcp_servers_list entry), without contacting upstream or changing tools. 404 not_found = no such server on this account. {{scope}}",
   auth: "manager",
   method: "get",
   schema: {
@@ -2161,7 +2162,7 @@ const createMcpServer: ToolDescriptor = defineTool({
   name: "mcp_server_create",
   title: "Register MCP Server",
   description:
-    "Register an account MCP app and discover tools. {{scope}} Get an actual public HTTPS MCP endpoint from user/vendor docs; never guess or use a docs URL. authType defaults None; credentials follow its schema: Bearer(token),ApiKeyHeader(header/value),ApiKeyQuery(param/value),Basic(username/password),CustomHeaders(headers), or McpOAuth(human dashboard login). Supplied credentials are live-probed before storage, encrypted, never returned. credentialScope defaults operator (operatorId/default operator); account shares one credential. Omit credential to connect later via app_connect(mcp:<slug>). Returns201 server/discovery(added/changed/removed/unchanged)/next. Unpublished until mcp_server_set_tools enables a tool. 400 credential_invalid:rejected,nothing saved;502 provider_unavailable:check endpoint/retry later,nothing saved;422 invalid_url:requires public HTTPS;400 invalid_request:names enum errors or the 25-server cap. Disclose that upstreamUrl becomes public if a bound kit publishes. Limit: 20 registrations/hour/account.",
+    "Register an account MCP app; initial discovery is included when credentials are available or authType is None. Use returned server.tools and next; successful discovery needs no second refresh. {{scope}} Get an actual public HTTPS MCP endpoint from user/vendor docs; never guess or use a docs URL. authType defaults None; credentials follow its schema: Bearer(token),ApiKeyHeader(header/value),ApiKeyQuery(param/value),Basic(username/password),CustomHeaders(headers), or McpOAuth(human dashboard login). Supplied credentials are live-probed before storage, encrypted, never returned. credentialScope defaults operator (operatorId/default operator); account shares one credential. Omit credential to connect later via app_connect(mcp:<slug>). Returns201 server/discovery(added/changed/removed/unchanged)/next. Unpublished until mcp_server_set_tools enables a tool. 400 credential_invalid:rejected,nothing saved;502 provider_unavailable:check endpoint/retry later,nothing saved;422 invalid_url:requires public HTTPS;400 invalid_request:names enum errors or the 25-server cap. Disclose that upstreamUrl becomes public if a bound kit publishes. Limit: 20 registrations/hour/account.",
   auth: "manager",
   method: "post",
   schema: {
@@ -2206,9 +2207,9 @@ const createMcpServer: ToolDescriptor = defineTool({
 
 const discoverMcpServer: ToolDescriptor = defineTool({
   name: "mcp_server_discover",
-  title: "Discover MCP Server Tools",
+  title: "Refresh MCP Server Tools",
   description:
-    "Rediscover tools using STORED credentials: account-shared or selected/default operator. {{scope}} New tools start withheld; changed tools disable until mcp_server_set_tools re-enables; vanished tools are removed. Returns server/discovery changes/next. 422 not_connected:app_connect(mcp:<slug>) or dashboard for McpOAuth, per message. 502 provider_unavailable:retry later, or reconnect revoked credentials. Limit: 60/hour/account.",
+    "Refresh from upstream and CHANGE the saved tool catalog; use mcp_server_get or mcp_servers_list for a saved read. {{scope}} Creator or account Admin only. Uses STORED credentials: account-shared or selected/default operator. New tools start withheld; changed tools disable until mcp_server_set_tools re-enables; vanished tools are removed. Returns server/discovery changes/next. 422 not_connected:app_connect(mcp:<slug>) or dashboard for McpOAuth, per message. 502 provider_unavailable:retry later, or reconnect revoked credentials. Limit: 60/hour/account.",
   auth: "manager",
   method: "post",
   schema: {
@@ -2256,6 +2257,7 @@ const deleteMcpServer: ToolDescriptor = defineTool({
 export const manageDescriptors: readonly ToolDescriptor[] = [
   ...apiAppDescriptors,
   ...qualityDescriptors,
+  ...knowledgeDescriptors,
   ...appDiscoveryDescriptors,
   ...onboardingDescriptors,
   ...supportDescriptors,

@@ -11,7 +11,7 @@ import {
   type ToolDescriptor,
 } from "../src/index.js";
 
-// The wire contract, pinned per descriptor: for all 123 tools, executeTool
+// The wire contract, pinned per descriptor: for all 129 tools, executeTool
 // against a recording fake client must produce exactly the {method, path,
 // query/opts, body} the live server produces today. Expected values are
 // derived from the server suite's manage-tools/directory tests so the two
@@ -68,12 +68,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 115 manager + 8 anonymous descriptors, names unique, byName agrees", () => {
-    expect(manageDescriptors).toHaveLength(115);
+  it("ships exactly 121 manager + 8 anonymous descriptors, names unique, byName agrees", () => {
+    expect(manageDescriptors).toHaveLength(121);
     expect(directoryDescriptors).toHaveLength(8);
-    expect(allDescriptors).toHaveLength(123);
+    expect(allDescriptors).toHaveLength(129);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(123);
+    expect(new Set(names).size).toBe(129);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -82,7 +82,7 @@ describe("registry", () => {
     for (const descriptor of directoryDescriptors) expect(descriptor.auth).toBe("anonymous");
   });
 
-  it("pins {auth, method} for every one of the 123 descriptors", () => {
+  it("pins {auth, method} for every one of the 129 descriptors", () => {
     // The full name → auth/method table. A new/renamed tool or a changed verb
     // must show up here explicitly — no descriptor ships with an unpinned method.
     expect(
@@ -102,6 +102,12 @@ describe("registry", () => {
         "action_worker_create manager post",
         "worker_tools manager get",
         "worker_quality_get manager get",
+        "knowledge_sources manager get",
+        "knowledge_search manager post",
+        "knowledge_get manager get",
+        "knowledge_changes manager get",
+        "knowledge_configuration_get manager get",
+        "knowledge_configuration_set manager put",
         "worker_quality_set manager patch",
         "worker_quality_preview manager post",
         "worker_tool_call manager post",
@@ -856,6 +862,8 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
   it("forwards the caller's token on every manager call", async () => {
     // Strict descriptors are validated before the request, so these need complete inputs.
     const strictInputs: Record<string, Record<string, unknown>> = {
+      knowledge_get: { id: RUN_ID },
+      knowledge_configuration_set: { expectedVersion: 0, enabled: true, allWorkers: true },
       api_app_get: { appId: RUN_ID },
       api_app_create: { name: "Test", definition: { schemaVersion: 1, origin: "https://api.example.com", operations: [{}] } },
       api_app_update: { appId: RUN_ID, revision: RUN_ID, name: "Test", enabled: false, definition: { schemaVersion: 1, origin: "https://api.example.com", operations: [{}] } },

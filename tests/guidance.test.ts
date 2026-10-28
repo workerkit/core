@@ -21,9 +21,15 @@ describe("canonical guidance", () => {
     expect(toolsForProfile("decision")).toHaveLength(24);
     expect(toolsForProfile("decision").map(tool => tool.name)).not.toContain("worker_quality_set");
     expect(toolsForProfile("directory")).toHaveLength(8);
+    // Company Knowledge is its own mount: the fleet profiles never carry its tools.
+    expect(toolsForProfile("knowledge").map(tool => tool.name)).toEqual([
+      "knowledge_sources", "knowledge_search", "knowledge_get", "knowledge_changes", "knowledge_configuration_get", "knowledge_configuration_set",
+    ]);
+    for (const profile of ["workers", "decision"] as const)
+      expect(toolsForProfile(profile).map(tool => tool.name)).not.toContain("knowledge_search");
     for (const [profile, instruction] of Object.entries(instructionsByProfile)) {
       expect(instruction.length, profile).toBeLessThanOrEqual(2048);
-      if (profile !== "directory") {
+      if (profile === "workers" || profile === "decision") {
         expect(instruction.slice(0, 512)).toContain("Never automatically retry a 403");
         expect(instruction.slice(0, 512)).toContain("Skipped");
       }

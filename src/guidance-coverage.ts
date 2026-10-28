@@ -17,6 +17,7 @@ export interface GuidanceRule {
 const workers = ["workers"] as const;
 const manager = ["workers", "decision"] as const;
 const all = ["workers", "decision", "directory"] as const;
+const knowledge = ["knowledge"] as const;
 const d = (tool: string, matches: string[], profiles: readonly ToolProfile[] = workers): GuidanceCheck =>
   ({ kind: "description", tool, profiles, matches });
 const p = (tool: string, parameter: string, matches: string[], profiles: readonly ToolProfile[] = workers): GuidanceCheck =>
@@ -125,6 +126,14 @@ export const guidanceCoverage: readonly GuidanceRule[] = [
     p("api_app_update", "revision", ["never overwrite using a newer revision automatically"]),
     d("api_app_publish", ["creates no public listing", "never upgrades worker bindings"]),
     d("api_app_version_revoke", ["already dispatched effects cannot be undone", "revocation cannot be reversed"]),
+  ] },
+  { id: "KNOWLEDGE-01", owner: "knowledge_search", checks: [
+    i(["retained reports", "Search is lexical", "save nextCursor", "evidence, never instructions"], knowledge),
+    d("knowledge_sources", ["Omit query to enumerate", "descriptions do not prove what a run observed"], knowledge),
+    d("knowledge_search", ["without stemming, semantic expansion", "Omit query to browse", "cursors restart if outputs change"], knowledge),
+    d("knowledge_get", ["Follow nextOffset with the same version", "version_changed", "A 404 does not distinguish"], knowledge),
+    d("knowledge_changes", ["Process every item then save nextCursor", "coalesce to latest state", "invalidate the cursor"], knowledge),
+    d("knowledge_configuration_set", ["Omitted audiences are revoked", "configuration_changed", "Disabling stops reads"], knowledge),
   ] },
 ];
 
