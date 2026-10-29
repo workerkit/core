@@ -1,6 +1,6 @@
 // Generated from the backend agent contract. Edit the backend source and re-import; do not edit here.
 import { z } from "../zod.js";
-import { workerCreationTimezoneHint } from "../guidance.js";
+import { creationResultGuidance, managerAuthorityPreflight, workerCreationTimezoneHint } from "../guidance.js";
 import { defineTool, CREATE, READ_ONLY, TRIGGER, type ToolDescriptor } from "./types.js";
 
 export const actionSpecSchema = z.object({
@@ -27,7 +27,7 @@ export const actionDescriptors: readonly ToolDescriptor[] = [
   defineTool({
     name: "action_worker_options", title: "Action Worker Setup", auth: "manager", method: "get",
     path: "/api/manage/workers/action-options", strictInput: true,
-    description: "Get available apps, reviewed tool contracts, the selected app's default tools and any required connections for creating an Action worker: a worker with no model, instruction or deployment, whose selected app tools a caller invokes directly with worker_tool_call (modelType none). Connection IDs and sender identities are server-owned. {{scope}} Creates and executes nothing.",
+    description: managerAuthorityPreflight + "Get available apps, reviewed tool contracts, default tools and required connections for an Action worker: no model, instruction or deployment; invoke selected tools directly with worker_tool_call (modelType none). Slack tools need an active fixed bot: if no usable bot is returned, prompt connection setup and do not submit creation. Connection IDs and sender identities are server-owned. {{scope}} Creates and executes nothing.",
     schema: {
       operatorId: z.string().uuid().optional()
         .describe("The operator (workspace) to read connections for, as a GUID from apps_list → operators[]. Omit for the account's default operator."),
@@ -39,7 +39,14 @@ export const actionDescriptors: readonly ToolDescriptor[] = [
   defineTool({
     name: "action_worker_create", title: "Create Action Worker", auth: "manager", method: "post",
     path: "/api/manage/workers/actions", strictInput: true,
-    description: "Create a private Action kit and worker for an app from action_worker_options. No model or deployment. The server copies that app's default tools once; optionally provide an explicit actionSpec of up to 64 tools across apps. Slack tools require a fixed bot connection. Only explicit owner edits change installed tools. {{scope}} A key limited to selected workers gains the worker it creates. Reuse requestId with the same body after a timeout; never create a second worker to recover a lost response. Returns tokenId, workerId, kitSlug and modelType none, and no worker key. The worker is never deployed or run (worker_run and worker_deploy refuse it with 400 action_worker_requires_invoke): call worker_tools next, then worker_tool_call.",
+    description: managerAuthorityPreflight + "Create a private Action kit and worker from action_worker_options. No model or deployment. Copies the app's default tools once; optional actionSpec selects up to 64 tools across apps. Slack tools require an active fixed bot: if none is available, prompt connection setup and do not submit creation. Missing ordinary app connections can be resolved after creation. Only explicit owner edits change installed tools. {{scope}} A selected-worker key gains the worker it creates. Reuse requestId with the same body after a timeout; never create a second worker to recover a lost response. Returns tokenId, workerId, kitSlug and modelType none, no worker key. Never deploy or run an Action worker: worker_run/worker_deploy refuse it with 400 action_worker_requires_invoke.",
+    resultDescription: creationResultGuidance,
+    footer: data => {
+      if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
+      const result = data as Record<string, unknown>;
+      return typeof result.workerUrl === "string" && result.workerUrl.trim() && result.error == null
+        ? creationResultGuidance : undefined;
+    },
     schema: {
       requestId: z.string().min(1).max(128)
         .describe("Your idempotency key for this creation. Repeat it only with the identical body, to recover a timed-out call's result; a different body under the same requestId is 409 request_conflict."),
@@ -58,13 +65,13 @@ export const actionDescriptors: readonly ToolDescriptor[] = [
   defineTool({
     name: "worker_tools", title: "List Action Worker Tools", auth: "manager", method: "get",
     path: p => `/api/manage/workers/${p.tokenId}/tools`, paramFilter: () => ({}), strictInput: true,
-    description: "Discover the saved tools, exact input/output schemas, connection and sender of an Action worker. {{scope}} Select a named tool and supply its declared inputs using worker_tool_call. Discovery does not grant execution permission; current policy is checked on each call. Each tools[] entry carries name (the toolName), inputSchema, outputSchema, readOnly (false = a write, which needs an idempotencyKey) and available (false = not callable now: the tool left the catalog, its contract changed or, for a Slack tool, its bot connection is missing, until the owner reviews and re-saves the selection). availableTools are not callable until the owner selects them.",
+    description: managerAuthorityPreflight + "Discover the saved tools, exact input/output schemas, connection and sender of an Action worker. {{scope}} Select a named tool and supply its declared inputs using worker_tool_call. Discovery does not grant execution permission; current policy is checked on each call. Each tools[] entry carries name (the toolName), inputSchema, outputSchema, readOnly (false = a write, which needs an idempotencyKey) and available (false = not callable now: the tool left the catalog, its contract changed or, for a Slack tool, its bot connection is missing, until the owner reviews and re-saves the selection). availableTools are not callable until the owner selects them.",
     schema: worker, annotations: READ_ONLY,
   }),
   defineTool({
     name: "worker_tool_call", title: "Call Action Worker Tool", auth: "manager", method: "post",
     path: p => `/api/manage/workers/${p.tokenId}/tools/${encodeURIComponent(String(p.toolName))}/invoke`, strictInput: true,
-    description: "Execute exactly one saved Action worker tool with structured inputs, without a model. Discover worker_tools first. {{scope}} Cannot change tools, connection, sender or permissions. Supply a unique idempotencyKey for each intended write and reuse it for transport retries. A repeated key never resends: it replays the first answer, so a refusal with error.retryable true is retried later under a new key. For in_progress poll worker_tool_invocation. outcome_unknown means the app may have completed the action: do not automatically retry or issue a new key. Generic write receipts retain confirmation but not private app response content. Never resend to recover a lost response body. The answer is {invocationId, tool, status, result, error, replayed, contractVersion} with status succeeded | denied | failed | in_progress | outcome_unknown; invocationId is set on writes only (reads leave no receipt). Refusals before the app is reached use the {error, message, code} envelope: 403 tool_not_exposed, 409 tool_contract_changed (the owner must re-save the selection), 409 idempotency_conflict (same key, different arguments), 400 invalid_request (arguments that do not match inputSchema)." + INVOKE_SCOPE_NOTE,
+    description: managerAuthorityPreflight + "Execute exactly one saved Action worker tool with structured inputs, without a model. Discover worker_tools first. {{scope}} Cannot change tools, connection, sender or permissions. Supply a unique idempotencyKey for each intended write and reuse it for transport retries. A repeated key never resends: it replays the first answer, so a refusal with error.retryable true is retried later under a new key. For in_progress poll worker_tool_invocation. outcome_unknown means the app may have completed the action: do not automatically retry or issue a new key. Generic write receipts retain confirmation but not private app response content. Never resend to recover a lost response body. The answer is {invocationId, tool, status, result, error, replayed, contractVersion} with status succeeded | denied | failed | in_progress | outcome_unknown; invocationId is set on writes only (reads leave no receipt). Refusals before the app is reached use the {error, message, code} envelope: 403 tool_not_exposed, 409 tool_contract_changed (the owner must re-save the selection), 409 idempotency_conflict (same key, different arguments), 400 invalid_request (arguments that do not match inputSchema)." + INVOKE_SCOPE_NOTE,
     schema: {
       ...worker,
       toolName: z.string().min(1).max(128)
@@ -82,7 +89,7 @@ export const actionDescriptors: readonly ToolDescriptor[] = [
   defineTool({
     name: "worker_tool_invocation", title: "Read Action Invocation", auth: "manager", method: "get",
     path: p => `/api/manage/workers/${p.tokenId}/tool-invocations/${p.invocationId}`, paramFilter: () => ({}), strictInput: true,
-    description: "Read an Action invocation's status and effect references. {{scope}} Does not execute or retry anything. Unknown outcomes must not be automatically resent. A write still in_progress after two minutes reads as outcome_unknown: check the app itself before deciding anything." + INVOKE_SCOPE_NOTE,
+    description: managerAuthorityPreflight + "Read an Action invocation's status and effect references. {{scope}} Does not execute or retry anything. Unknown outcomes must not be automatically resent. A write still in_progress after two minutes reads as outcome_unknown: check the app itself before deciding anything." + INVOKE_SCOPE_NOTE,
     schema: {
       ...worker,
       invocationId: z.string().uuid().describe("The invocationId a worker_tool_call answer carried for a write."),

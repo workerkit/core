@@ -6,19 +6,28 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.3.21] - 2026-10-27
+## [0.3.21] - 2026-10-29
 
 ### Added
 
 - Company Knowledge: `knowledge_sources` discovers the workers whose retained reports a key may read, `knowledge_search` runs a deterministic lexical search or browses by filters, `knowledge_get` reads complete versioned report or structured content with offset continuation, and `knowledge_changes` reconciles new, corrected and withdrawn outputs through a durable cursor. All four require the new `readKnowledge` scope. Retrieval returns retained reports only, never app data, transcripts or a worker run.
 - `knowledge_configuration_get` and `knowledge_configuration_set` read and replace activation, enrolled sources, structured-output publication, history start and reader grants. They require the new `manageKnowledge` scope, account administrator authority and an unrestricted credential. Existing keys gain neither scope without explicit re-scoping.
 - The `knowledge` profile serves those six tools for the dedicated Knowledge MCP mount, with its own instructions; the workers and decision profiles do not carry them. The backend contract gains the `KNOWLEDGE-01` coverage rule for evidence, cursor and configuration guidance.
+- `kit_install`, `decision_worker_create` and `action_worker_create` results carry creation guidance: show `workerUrl`, follow `setupActions` (each with a message, the apps involved and a URL or next tool), resolve blocked or unknown readiness before `nextCall`, and treat a saved worker as unproven until it runs. The `decision_worker_create` output schema declares `connectAppsUrl` and `setupActions`.
+- `workerkit_about` joins the decision profile, which now serves 25 tools, so a compact connection can explain WorkerKit and lead a user into a first worker.
 
 ### Changed
 
 - `mcp_server_discover` is titled Refresh MCP Server Tools and says that it changes the saved tool catalog from upstream and is for the creator or an account Admin; `mcp_server_get` is the saved read. `mcp_server_create` explains that initial discovery is included when credentials are available or no authentication is needed, so a successful registration needs no second refresh.
 - `app_connect` reports failed MCP discovery after credential storage as a nonfatal warning and says that only new account MCP apps need `mcp_server_create`. `apps_list` points to `api_apps_list` for API apps and to `mcp_servers_list` for unpublished own servers.
-- The Workers REST instructions describe the Company Knowledge scopes and tools and where their MCP mount lives.
+- The Workers REST instructions describe the Company Knowledge scopes and tools and where their MCP mount lives, describe the product as Decision, Language and Action workers chained into workflows, and say that the spec includes the anonymous discovery reads.
+- Management descriptions open with the key_info preflight: call it before the session's first management call, verify scopes and worker reach, and treat the user's request as never expanding credential authority. The manager and decision instructions lead with the same rule and with first-job help.
+- `workerkit_about` and its `section` parameter lead the user into a first worker and point creation at the authenticated Workers tools; the directory instructions do the same.
+- `action_worker_options`, `action_worker_create` and `kit_install_preview` say that Slack tools need an active fixed bot and that creation must not be submitted without one, while ordinary missing app connections can be resolved after creation. `worker_deploy` says that deployment never requests a manual run and that a failed deployment saves none of its model or ceilings; `account_usage` says that wallet balance alone is not readiness; `worker_get` names the `personal_connection_not_shared` readiness issue; `mcp_server_create` asks to check `apps_list` and `mcp_servers_list` for an app that already covers the job.
+
+### Security
+
+- Update `undici` to 7.30.1, which fixes a TLS certificate validation bypass when `Agent` drops TLS options, cache poisoning and cross-user disclosure through cross-origin redirects, and several denial-of-service issues in the HTTP client (GHSA-2m5v-pch6-74hx, GHSA-4w7w-5xrc-9h26 and related advisories).
 
 ## [0.3.20] - 2026-10-21
 

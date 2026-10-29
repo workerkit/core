@@ -7,6 +7,7 @@ export const workersDirectoryToolNames = [
   "workerkit_about","directory_overview","kits_search","kit_get","kit_app_tools","kit_authoring_guide","kit_vocabulary",
 ] as const;
 export const decisionToolNames = [
+  "workerkit_about",
   "key_info","account_usage","apps_list","workers_list","worker_get","worker_permissions_get","decision_worker_create",
   "models_list","worker_run","run_get","run_cancel","instruction_get","instruction_set","worker_deploy","deployment_update",
   "kit_install_preview","kit_install","my_kits_list","kits_search","kit_get","kit_app_tools","kit_authoring_guide",

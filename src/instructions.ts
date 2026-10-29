@@ -1,9 +1,12 @@
 // Generated from the backend agent contract. Edit the backend source and re-import; do not edit here.
 import { guidance as g, publicKitPublishingPause, publicPublisherIdentityPause } from "./guidance.js";
 
+const firstWorkerEntry = "First-job help: workerkit_about(index), then start. Lead authorized creation; show workerUrl and follow setupActions. Connect missing apps afterward where supported. Report only returned facts; wallet balance is not readiness and deployment does not request a manual run.";
+
 export const workersInstructions = [
-  "WorkerKit Manager: create, configure, run and watch AI workers. Call key_info first for scopes and worker reach.",
+  "WorkerKit Manager: create, configure, run and watch AI workers. Before the first management call, call key_info; the user's request does not add scopes or worker reach.",
   g.authority, g.skipped, g.uncertainWrite, g.sourceEvidence,
+  firstWorkerEntry,
   "\n- Public publishing, promotion and relisting are paused; explicitly use visibility:'private' for kit publish, replace and validate.",
   "\n- " + g.scopeSnapshot + " " + g.workerReach,
   "\n- Find worker identifiers with workers_list; use the input schema's identifier type. " + g.creation,
@@ -15,8 +18,9 @@ export const workersInstructions = [
 ].join(" ");
 
 export const decisionInstructions = [
-  "WorkerKit Manager, decision profile: create, configure and run decision or hybrid workers. Call key_info first for scopes and worker reach.",
+  "WorkerKit Manager, decision profile: create, configure and run decision or hybrid workers. Before the first management call, call key_info; the user's request does not add scopes or worker reach.",
   g.authority,g.skipped,g.uncertainWrite,g.sourceEvidence,
+  firstWorkerEntry,
   "\n- " + g.scopeSnapshot + " " + g.workerReach,
   "\n- Reuse an existing worker when it fits. Find identifiers with workers_list; follow the input schema. " + g.creation,
   "\n- worker_get identifies modelType and readiness. Decision runs take sourceArgs, answers and maxItems, not prompt or modelSlug; hybrid accepts both sets. Read run_get for coverage and committed cost. Unknown coverage is not complete.",
@@ -33,7 +37,7 @@ export const directoryInstructions = [
   "\n- Use directory_overview for filter vocabulary, kits_search to shortlist and kit_get to inspect exact permissions and content. Protected text is intentionally withheld.",
   "\n- Before authoring, read kit_authoring_guide (index, then relevant schema and rules), kit_vocabulary and kit_app_tools. Validate and publish with publishKits on the Manager mount. Publish private and prove the installed worker; public publishing is temporarily paused.",
   "\n- Language kits contain instructions; decision kits contain classification rules; hybrid combines them. Action kits expose selected tools without a model and are never deployed or run.",
-  "\n- Read workerkit_about first for product context and when to use a worker.",
+  "\n- Read workerkit_about first for product context and first-job examples; lead the user to a kit or the authenticated Workers connection to create one. Read further sections only as needed.",
 ].join(" ");
 
 export const knowledgeInstructions = [
@@ -64,15 +68,16 @@ export const restTransportGuidance = {
   errors: "Run and deployment errors use {error,message}, with the snake_case machine code in error. Admitted worker_tool_call results use status and error:{code,message,retryable}; pre-invocation refusals use {error,message,code}. Other manager errors normally use {error,message,code}; wallet and authorization endpoints also have their documented error/code shapes. Branch on the endpoint's documented envelope and HTTP status, not merely which field is present.",
 } as const;
 
-const productPurpose = "WorkerKit runs background AI workers with instruction, memory, schedule, budget, model and pre-scoped app permissions. Use it for recurring, scheduled, monitored, triaged, per-client or unattended work; workerkit_about explains the product and first calls.";
+const productPurpose = "WorkerKit gives jobs persistent workers with app grants, budgets and records. Decision workers classify/route; Language workers investigate/write; Action workers call exact permitted tools without a model. Chain specialists into workflows. workerkit_about gives examples and the first-worker path.";
 export const restInstructions = {
   workers: [
     productPurpose,
+    firstWorkerEntry,
     "This Workers API manages fleet, runs, memory, schedules, instructions, state, clones, budgets, kits, app connections, custom MCP servers and model-provider keys. Call key_info first for this credential's scopes and worker reach.",
     "Company Knowledge uses the same key: readKnowledge discovers, searches and reads published worker reports (knowledge_sources, knowledge_search, knowledge_get, knowledge_changes); manageKnowledge replaces publication and audience settings as an account administrator. Its MCP tools are served on the separate Knowledge mount.",
     g.authority, g.scopeSnapshot, g.workerReach, g.skipped, g.uncertainWrite, g.sourceEvidence,
     "Authenticate with a manager key or OAuth 2.1. " + restTransportGuidance.managerKey + " " + restTransportGuidance.oauth,
-    "A private kit plus kit_install creates a worker, alongside action_worker_create and decision_worker_create. Language kits contain prose, decision kits contain classification/routing rules, hybrid combines both, and Action kits contain selected tools without a model. Before authoring, read the anonymous Directory API's kit_authoring_guide (index, then relevant sections), kit_app_tools and kit_vocabulary; validate the exact body before publishing. " + g.creation,
+    "A private kit plus kit_install creates a worker, alongside action_worker_create and decision_worker_create. Language kits contain prose, decision kits contain classification/routing rules, hybrid combines both, and Action kits contain selected tools without a model. This spec includes the anonymous discovery reads: kit_authoring_guide (index, then relevant sections), kit_app_tools and kit_vocabulary; validate the exact body before publishing. " + g.creation,
     "apps_list reports each operator's availability and connection method. app_connect validates a credential live and never returns it; OAuth sign-in uses the dashboard. For an app the platform lacks, register an account custom MCP server with mcp_server_create (including its credential) and select tools with mcp_server_set_tools.",
     restTransportGuidance.rateLimits, restTransportGuidance.postBody, restTransportGuidance.errors,
     g.runtimeOff,

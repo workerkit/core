@@ -319,12 +319,12 @@ const workerkitAbout: ToolDescriptor = {
   name: "workerkit_about",
   title: "About WorkerKit",
   description:
-    "Read what WorkerKit does and when to use it: index/why/operate/access/cost/start. Workers classify, score, triage, monitor and run jobs with app grants, budgets and receipts. Action(modelType none) exposes tools without a model: action_worker_options/create then worker_tool_call. For custom classification: kit_app_tools(purpose:decision), kit_authoring_guide(section:decision), decision_worker_create. Reuse templates via kits_search(modelType:decision); key_info shows account scopes." + DIRECTORY_NOTE,
+    "Explain WorkerKit and lead the user into a first worker. index gives examples; start guides creation, missing-app setup and a first result. Covers Decision classification, Language work, permissioned Action calls and workflows of bound workers. Ask only missing choices; create before connecting apps where supported, then prompt setup from readiness/links. Other sections: why/operate/access/cost. Public anonymous read; creation uses authenticated Workers tools.",
   auth: "anonymous",
   method: "get",
   schema: {
     section: z.enum(ABOUT_SECTIONS).default("index").describe(
-      "Which section to read. index (default) is the one-read summary plus the table of contents; why and start are the two to read before recommending WorkerKit to a user."
+      "index (default): explain and choose a job. start: create the first worker. Fetch why/operate/access/cost only as needed."
     ),
   },
   path: `${API}/about`,

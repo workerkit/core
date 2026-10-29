@@ -46,7 +46,7 @@ jobs:
       - run: node scripts/check-descriptions.mjs
       - run: npm test
       - run: npm run test:hygiene
-      - run: npm audit --omit=dev --audit-level=high
+      - run: node scripts/audit-dependencies.mjs
       - run: npm run test:package
       - name: Build release artifact
         run: |

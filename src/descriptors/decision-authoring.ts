@@ -1,6 +1,6 @@
 // Generated from the backend agent contract. Edit the backend source and re-import; do not edit here.
 import { z } from "../zod.js";
-import { workerCreationTimezoneHint } from "../guidance.js";
+import { creationResultGuidance, managerAuthorityPreflight, workerCreationTimezoneHint } from "../guidance.js";
 import { defineTool, CREATE, type ToolDescriptor } from "./types.js";
 
 const key = z.string().regex(/^(?=.{1,40}$)[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/);
@@ -17,9 +17,16 @@ export const decisionQuestion = z.discriminatedUnion("type", [
 export const createDecisionWorker: ToolDescriptor = defineTool({
   name: "decision_worker_create",
   title: "Create Decision Worker",
-  description: "Create a reusable classifier to categorize, score, filter or triage connected data. First discover source recipes with kit_app_tools(purpose:'decision'); kit_authoring_guide(section:'decision') has examples. Creates a private kit and worker atomically; optionally deploys, never runs. Questions and source mappings compile deterministically into the ordinary decision specification. Source filters do not narrow the recipe's read permissions. {{scope}} A key limited to selected workers gains the worker it creates. Reuse requestId and the identical body to recover the original receipt after a timeout; changed body returns 409. Returns tokenId for lifecycle commands, stable workerId, kitSlug, readiness, deployment/error and exact nextCall arguments. Follow nextCall, then worker_run/run_get. A deployment error means the worker already exists. Choice adds unclear automatically; setup answers adjust categories/levels later. Creation returns no worker API secret. For arbitrary decision sources or routed actions use kit_validate → kit_publish(private) → kit_install.",
+  description: managerAuthorityPreflight + "Create a reusable classifier to categorize, score, filter or triage data. Discover recipes with kit_app_tools(purpose:'decision'); kit_authoring_guide(section:'decision') has examples. Missing ordinary app connections do not prevent creation: create first, then prompt connection setup. Creates a private kit and worker atomically; optionally deploys, never runs. Questions and source mappings compile deterministically; source filters do not narrow read permissions. {{scope}} A selected-worker key gains the worker it creates. Reuse requestId and the identical body after a timeout; changed body returns 409. Returns tokenId, workerId, kitSlug, workerUrl, readiness, deployment/error, setupActions and nextCall. A deployment error leaves the worker saved, without that deployment's model/ceilings; never recreate it. Choice adds unclear; setup answers adjust categories/levels later. Returns no worker API secret. Arbitrary sources/routed actions: kit_validate → kit_publish(private) → kit_install.",
   auth: "manager", method: "post", path: "/api/manage/decision-workers",
   strictInput: true,
+  resultDescription: creationResultGuidance,
+  footer: data => {
+    if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
+    const result = data as Record<string, unknown>;
+    return typeof result.workerUrl === "string" && result.workerUrl.trim() && result.error == null
+      ? creationResultGuidance : undefined;
+  },
   schema: {
     requestId: z.string().min(1).max(128).regex(/^[!-~]+$/).describe("Unique creation id. Reuse with the same body on retries; new id creates a new worker."),
     name: z.string().min(1).max(100),
@@ -40,6 +47,11 @@ export const createDecisionWorker: ToolDescriptor = defineTool({
   outputSchema: {
     tokenId: z.number().int().positive().describe("Use with existing worker tools and CLI commands."),
     workerId: z.string().uuid(), kitSlug: z.string(), modelType: z.literal("decision"), workerUrl: z.string(),
+    connectAppsUrl: z.string().nullable().optional(),
+    setupActions: z.array(z.object({
+      code: z.string(), message: z.string(), url: z.string().optional(), apps: z.array(z.string()),
+      tool: z.string().optional(), arguments: z.record(z.unknown()),
+    })).optional(),
     readiness: z.record(z.unknown()).nullable(), deployment: z.record(z.unknown()).nullable(),
     deploymentError: z.record(z.unknown()).nullable(), warnings: z.array(z.string()),
     nextCall: z.object({ tool: z.string(), arguments: z.record(z.unknown()) }),

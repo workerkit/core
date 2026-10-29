@@ -922,6 +922,23 @@ describe("kit authoring wire contract (the publishKits lane + the permissions re
     expect(wireBody(c.opts.body)).toEqual({ apps, timeframePastDays: -1 });
   });
 
+  it("preserves explicit attachment-forwarding grants in worker settings and kit authoring", async () => {
+    const apps = [
+      { code: "email", operations: ["view_email", "forward_attachments"], visibleFields: ["attachments"] },
+      { code: "slack", operations: ["read_messages", "read_file", "forward_attachments"], visibleFields: ["files"] },
+    ];
+    const permissions = await run(d("worker_permissions_set"), { tokenId: 42, apps }, "t");
+    expect(wireBody(permissions.opts.body)).toEqual({ apps });
+    const authored = { ...body, content: { instructionContent: "Summarize permitted attachments.", apps } };
+    for (const name of ["kit_validate", "kit_publish"]) {
+      const call = await run(d(name), authored, "t");
+      expect(wireBody(call.opts.body)).toEqual(authored);
+    }
+    const revoked = apps.map(app => ({ ...app, operations: app.operations.filter(op => op !== "forward_attachments") }));
+    const update = await run(d("worker_permissions_set"), { tokenId: 42, apps: revoked }, "t");
+    expect(wireBody(update.opts.body)).toEqual({ apps: revoked });
+  });
+
   it("worker_bindings_get GETs the grants with search promoted to the query", async () => {
     const plain = await run(d("worker_bindings_get"), { tokenId: 42 }, "t");
     expect(plain.method).toBe("get");

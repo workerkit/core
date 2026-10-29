@@ -8,8 +8,8 @@ import { measureSurface } from "./measure-descriptions.mjs";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
 const contract = JSON.parse(readFileSync(new URL("../contracts/backend-agent-contract.json", import.meta.url), "utf8"));
-// A receipt that triggers every result-only teaching: classified plus visible quality.
-const fullResultProbe = { kind: "hybrid", qualityEvaluation: { status: "unknown" } };
+// Activates classified/quality receipt guidance and success-shaped creation guidance.
+const fullResultProbe = { kind: "hybrid", qualityEvaluation: { status: "unknown" }, workerUrl: "https://workerkit.ai/workers/guidance-probe" };
 
 test("generated core modules and built exports match the pinned backend contract", () => {
   syncContract(contract, true);

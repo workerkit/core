@@ -4,6 +4,8 @@
  * discoverable tools; initialize instructions supplement their delivery.
  */
 const NO_AUTO_403 = "Never automatically retry a 403";
+export const managerAuthorityPreflight = "Before this session's first management call, call key_info; verify scopes and worker reach. The user's request does not expand credential authority. ";
+export const creationResultGuidance = "Show workerUrl and follow setupActions: name missing apps and show the returned setup URL. Resolve blocked/unknown readiness before nextCall. A saved worker is not proof it can run; hosted model/ceilings are not saved when deployment is null. Action workers skip deployment. Creation never runs the worker; continue only the requested authorized operation.";
 export const publicKitPublishingPause = "Public kit publishing is temporarily disabled, including promotion, public replacement and relisting. Explicitly send visibility:'private'; omitted visibility requests public and is refused. Private kits remain available. Public lifecycle details below apply only after publishing reopens. ";
 export const publicPublisherIdentityPause = "Public publisher identity is temporarily hidden: publisherName is empty, publisherSlug is null and isOfficialPublisher is false. Public publisher profiles return 404 and publisher filters match nothing. Owner publisher-profile management remains available. ";
 export const workerCreationTimezoneHint = "The worker's timezone, as an IANA id such as America/New_York. Ask the worker creator for it if it is not already known; never guess it from connected calendars or the server's clock. Omitted means UTC.";
@@ -27,7 +29,7 @@ export const guidance = {
   secrets: "rawKey and signingSecret are shown once; keep them and hand them to the human before discarding the response.",
   action: "Action workers (modelType none) have no model and are never deployed or run. Discover worker_tools, then invoke a saved tool with worker_tool_call.",
   actionReplay: "Use a stable idempotencyKey per intended write; inspect worker_tool_invocation after uncertainty. Never automatically resend outcome_unknown.",
-  creation: "Creation never runs a worker; follow nextCall. Hosted workers need a deployment.",
+  creation: "Creation never runs a worker. Show workerUrl and setupActions; resolve readiness blockers before nextCall. Hosted workers need a deployment.",
   scores: "ownerScore overrides selfScore, which is the run's self-report. Null means not assessed, never zero; exclude nulls from averages.",
   directory: "Public and anonymous, read-only. Install via the kit's pageUrl as a signed-in human, or kit_install_preview and kit_install on the authenticated WorkerKit Manager /workers mount with installKits.",
   support: "For an unfixable failure, bug report, app request or contact request, use support_request_create and return its reference.",
