@@ -37,7 +37,7 @@ const DIRECTORY_NOTE =
 // writing a kit for the manager surface, and they are anonymous so it can draft
 // before it holds any credential.
 const AUTHORING_NOTE =
-  " Public and anonymous. On Manager /workers: kit_validate checks all sections, then kit_publish (publishKits). Publish PRIVATE first: only this account can install it via a signed-in human at pageUrl or kit_install, also the create-from-scratch path. Workers need apps connected on their operator (apps_list/app_connect). Add unsupported apps via mcp_server_create (credential), mcp_server_set_tools, then content.mcpServers.";
+  " Public and anonymous. On Manager /workers: kit_validate the exact body, then kit_publish (publishKits) with visibility:'private'. Install: signed-in human at pageUrl or kit_install. Each install creates one worker; workerSlots bind separate workers. Missing ordinary app connections can be set up afterward (apps_list/app_connect). index covers MCP/private API extensions.";
 
 // ─── Pure data mappers + footers (presentation data, not ToolResult assembly) ─
 
@@ -145,7 +145,7 @@ const directoryOverview: ToolDescriptor = {
   name: "directory_overview",
   title: "Directory Overview",
   description:
-    "Read directory vocabulary before choosing kits_search filters. kitCount counts published kits; categories.jobFamilies/roles/industries supplies slug/name for category/industry. apps code/name/categoryCode/installable supplies app (installable:false can appear in kits but cannot be installed). appCategories code/name/members[{code,name,appCode}] supplies appCategory and installer choices (e.g. Slack/Teams). models model/normalized/kitCount supplies model (normalized or substring). modelTypes code/name/summary supplies none(Action)|language|decision|hybrid. Also sortOptions/triggerModes. No kits here: for popularity use kits_search's default downloads sort. Human pages: https://workerkit.ai/kit/{slug}." + DIRECTORY_NOTE,
+    "Read directory vocabulary before choosing kits_search filters. kitCount counts published kits; categories.jobFamilies/roles/industries supplies slug/name for category/industry. apps code/name/categoryCode/installable supplies app (installable:false can appear in kits but cannot be installed). appCategories code/name/members[{code,name,appCode}] supplies appCategory and installer choices. models model/normalized/kitCount supplies model (normalized or substring). modelTypes code/name/summary supplies none(Action)|language|decision|hybrid. Also sortOptions/triggerModes. No kits here: for popularity use kits_search's default downloads sort. Human pages: https://workerkit.ai/kit/{slug}." + DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
   schema: {},
@@ -261,12 +261,12 @@ const kitAuthoringGuide: ToolDescriptor = {
   name: "kit_authoring_guide",
   title: "Kit Authoring Guide",
   description:
-    "Read kit authoring guidance one Markdown section at a time, with table of contents. Classification/scoring/filtering/triage: decision has recipes, typed questions, creation examples/results. Action(modelType none): index/schema; quickest create path is action_worker_options then action_worker_create on Manager. Full kit authoring: index, then schema/rules; state covers Records, memory and context hygiene; workers covers kits that call other workers (workerSlots, bindings, waiting, receipts); fetch other sections as needed. Unknown section:400 with valid names. Live sources:kit_app_tools; exact permission keys:kit_vocabulary. On Manager /workers, kit_validate the exact body then kit_publish (publishKits). Publish private, install and prove a run (Action:tool call) before public promotion with kit_replace." + DIRECTORY_NOTE,
+    "Read one Markdown section at a time. index chooses Language/Decision/Action/Hybrid and native/MCP/private API paths; schema/rules define the exact payload. decision covers recipe shortcuts and arbitrary catalog sources; workers covers typed calls, routing and bindings between separately installed workers. state covers Records, memory and context hygiene. Fetch other sections only as needed. Unknown section:400 with valid names. Discover business tools with kit_app_tools and permission keys with kit_vocabulary; Manager tools/list is not the worker's app inventory. Validate the exact body, publish private and install; prove a run (Action:tool call) before promotion when public publishing reopens." + DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
   schema: {
     section: z.enum(GUIDE_SECTIONS).default("index").describe(
-      "Which section to read. index (default) is the table of contents plus how to use the guide; schema and rules are the two an author cannot skip; workers is required before declaring workerSlots."
+      "index chooses a path; schema defines custom payloads. Fetch only relevant sections and reuse unchanged help. Read workers before declaring workerSlots."
     ),
   },
   path: `${API}/authoring/guide`,
@@ -277,7 +277,7 @@ const kitVocabulary: ToolDescriptor = {
   name: "kit_vocabulary",
   title: "Kit Authoring Vocabulary",
   description:
-    "Read the exact live keys before writing content.apps/categorySlots/categorySlugs; strict validation, no 'all' shorthand. Without app: apps[] code/name/summary, operations(tool KEYS), fields, supported axes(readOperations,masterAccessLevels,writableFields,providers,channels,objectTypes,scopePolicies,contentTypeScopes,capabilities,supportsAllowAll,supportsWriteEnabled,subApps,installable); concreteApps[] vendor tiles with standalone|provider|slotMember|subApp kind and content mapping; appCategories[] members/labelAlias/genericName; categories.jobFamilies/roles/industries(the valid categorySlugs); models; mcpApps(id=gatewayId,tools[].toolId=toolIds); note. Own MCP servers: mcp_servers_list on Manager. With app: {app,vendors,tools,note}; tools describes installed-worker tools: name(use in prose),description,readOnly,argsSchema,decisionSource result mapping where known,requires(grant one listed operations key). toolsNote replaces an unavailable catalog. Full response is large: read once/task, then per-app; kit_app_tools explores all app capabilities in one call. Unknown app:400 with valid codes." + AUTHORING_NOTE,
+    "Read the exact live keys before writing content.apps/categorySlots/categorySlugs; strict validation, no 'all' shorthand. Without app: apps[] code/name/summary, operations(tool KEYS), fields, supported axes(readOperations,masterAccessLevels,writableFields,providers,channels,objectTypes,scopePolicies,contentTypeScopes,capabilities,supportsAllowAll,supportsWriteEnabled,subApps,installable); concreteApps[] vendor tiles with standalone|provider|slotMember|subApp kind and content mapping; appCategories[] members/labelAlias/genericName; categories.jobFamilies/roles/industries(the valid categorySlugs); models; mcpApps(id=gatewayId,tools[].toolId=toolIds); note. Own MCP servers:mcp_servers_list. With app: {app,vendors,tools,note}; tools describes installed-worker names, descriptions, readOnly, argsSchema, documented decisionSource and requires (one operation-gate contribution, not full authorization). readOperations, provider/scope and current policy may also apply. toolsNote replaces an unavailable catalog. Prefer per-app reads; omit app for the full vocabulary only when needed. kit_app_tools explores schemas. Unknown app:400 with valid codes." + AUTHORING_NOTE,
   auth: "anonymous",
   method: "get",
   schema: {
@@ -293,11 +293,11 @@ const kitAppTools: ToolDescriptor = {
   name: "kit_app_tools",
   title: "Kit App Tools",
   description:
-    "Discover app tool capabilities. purpose:decision returns convenience source recipes, evidence fields, argument schemas, read permissions, limits and editable decision_worker_create examples; app narrows email/calendar/drive recipes. Public capability data only; apps_list checks account connections. Without purpose: apps[] in catalog order with operations and tools[{name,title,description,readOnly,argsSchema,decisionSource,requires,provider,scope,hosted}]. requires grants one listed operations key; absent means the tool comes with the app. provider pins a vendor, scope a Drive content family; hosted:false excludes hosted runs. toolsNote replaces unavailable catalogs. Platform MCP tools:kit_vocabulary.mcpApps; unsupported apps:mcp_server_create. Unknown app:400 with valid codes. Responses are cacheable public capability data; connectionStatus:not_checked is not live authorization. Recipes are not an allowlist: arbitrary sources/routed actions use the general catalog, argsSchema/result mapping, then kit_validate -> kit_publish(private) -> kit_install. Validation checks structure/grants, not live access. Action tool selection: action_worker_options. Detailed permission axes:kit_vocabulary." + DIRECTORY_NOTE,
+    "Discover worker business-app tools before declaring a capability absent: Manager tools/list exposes management, not these tools. Use app to keep context small. purpose:decision returns three convenience recipes, not a source ceiling; omit purpose for that app's full catalog: operations and tools[{name,title,description,readOnly,argsSchema,decisionSource,requires,provider,scope,hosted}]. requires is one operation-gate contribution, not full authorization; readOperations, provider/scope and current policy may also apply. hosted:false excludes hosted runs. decisionSource documents result paths where known; do not invent missing paths. Arbitrary sources/routed actions use this catalog, then kit_validate -> kit_publish(private) -> kit_install; hosted workers still need deployment. Public capabilities do not prove connections/access: apps_list checks setup; validation checks structure/grants. toolsNote replaces unavailable catalogs. Platform MCP:kit_vocabulary.mcpApps; extension paths:kit_authoring_guide(index). Action selections:action_worker_options. Permission axes:kit_vocabulary. Unknown app:400 with valid codes." + DIRECTORY_NOTE,
   auth: "anonymous",
   method: "get",
   schema: {
-    purpose: z.enum(["decision"]).optional().describe("Supported classification source recipes, with schemas and creation examples."),
+    purpose: z.enum(["decision"]).optional().describe("Three shortcut recipes with creation examples. Omit for arbitrary catalog tools and documented decisionSource mappings."),
     app: z.string().max(40).optional().describe(
       "One app code to read just that app's tools. Omit for every app."
     ),
@@ -319,7 +319,7 @@ const workerkitAbout: ToolDescriptor = {
   name: "workerkit_about",
   title: "About WorkerKit",
   description:
-    "Explain WorkerKit and lead the user into a first worker. index gives examples; start guides creation, missing-app setup and a first result. Covers Decision classification, Language work, permissioned Action calls and workflows of bound workers. Ask only missing choices; create before connecting apps where supported, then prompt setup from readiness/links. Other sections: why/operate/access/cost. Public anonymous read; creation uses authenticated Workers tools.",
+    "Explain WorkerKit and lead into a first worker when product context is needed. index gives examples; start guides creation, missing-app setup and a first result. Covers Decision, Language, Action and bound-worker workflows. Ask only missing choices; create before connecting apps where supported, then follow readiness/links. Reuse existing context; fetch why/operate/access/cost only as needed. Public anonymous read; creation uses authenticated Workers tools.",
   auth: "anonymous",
   method: "get",
   schema: {

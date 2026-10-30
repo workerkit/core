@@ -157,27 +157,35 @@ there is no preview mode, and unsupported run controls, including those in
 
 An Action worker exposes explicitly selected, typed app tools that a caller
 invokes directly, without a reasoning model or a hosted deployment.
-`action_worker_options` lists the native and reviewed MCP apps, their tool
-schemas and the server's defaults. Creating one with `action_worker_create` and
-an `app` copies that app's default tools once; an explicit `actionSpec` can
-instead select up to 64 tools across apps. Omitting `app` selects Slack, and
-tools added to the catalog later must be selected by hand.
+`action_worker_options` without `app` returns the app inventory only; with an
+`app` it returns that app's reviewed tool schemas, defaults and connection
+requirements. There is no implicit app: `action_worker_create` needs either an
+`app`, which copies that app's reviewed defaults once, or an explicit
+`actionSpec` that selects up to 64 tools across apps. Private API operations
+are not selectable through `app` or `actionSpec`; their bindings are managed
+in the dashboard. Tools added to the catalog later must be selected by hand.
 
 Read a worker's tool schemas with `worker_tools` before calling one with
 `worker_tool_call`, which takes `tokenId`, `toolName`, `arguments` and an
-optional `contractVersion: 1` and `idempotencyKey`. The key travels in the
-`Idempotency-Key` header; only the version and arguments go in the body. Give
-each intended write its own key and keep it for transport retries. Poll
+optional `contractVersion: 1` and `idempotencyKey`. Each tool reports
+`invocationSource`, `effect`, `idempotencyRequired` and `keyFormat`; follow
+those rather than inferring from `readOnly`. The key travels in the
+`Idempotency-Key` header; only the version and arguments go in the body.
+Native and MCP writes need a unique key per intended write and their reads
+need none; every private API operation, including reads, needs a
+`v1:<Unix timestamp>:<32-hex UUID>` key. Keep a key for transport retries. Poll
 `worker_tool_invocation` for pending results, and never automatically resend
 an `outcome_unknown` call with a new key: the app may already have acted. A
 refusal marked `retryable` can be tried again later under a new key. A call
 cannot change the saved tool selection, connection or sender, and a
-changed tool contract needs an explicit owner review and save. Generic write
-receipts keep the confirmation without storing private app response bodies.
+changed tool contract needs an explicit owner review and save. Native and MCP
+write receipts keep the confirmation without storing private app response
+bodies.
 
 A call answers with `status` `succeeded`, `denied`, `failed`, `in_progress` or
-`outcome_unknown`, plus `invocationId` on a write (reads leave no receipt).
-Repeating a write's key with the same arguments returns the stored receipt
+`outcome_unknown`, plus `invocationId` on a native or MCP write and on every
+private API call; native and MCP reads leave no receipt.
+Repeating a key with the same arguments returns the stored receipt
 without calling the app again; the same key with different arguments is a 409
 `idempotency_conflict`.
 

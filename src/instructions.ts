@@ -1,30 +1,31 @@
 // Generated from the backend agent contract. Edit the backend source and re-import; do not edit here.
 import { guidance as g, publicKitPublishingPause, publicPublisherIdentityPause } from "./guidance.js";
 
-const firstWorkerEntry = "First-job help: workerkit_about(index), then start. Lead authorized creation; show workerUrl and follow setupActions. Connect missing apps afterward where supported. Report only returned facts; wallet balance is not readiness and deployment does not request a manual run.";
+const firstWorkerEntry = "workerkit_about(index/start) if needed. Lead authorized creation; connect missing apps afterward where supported. Report returned facts; wallet balance is not readiness; deployment requests no manual run.";
 
 export const workersInstructions = [
-  "WorkerKit Manager: create, configure, run and watch AI workers. Before the first management call, call key_info; the user's request does not add scopes or worker reach.",
+  "WorkerKit Manager. Call key_info before management; requests add no scopes or worker reach.",
   g.authority, g.skipped, g.uncertainWrite, g.sourceEvidence,
   firstWorkerEntry,
-  "\n- Public publishing, promotion and relisting are paused; explicitly use visibility:'private' for kit publish, replace and validate.",
+  "\n- Public publishing, promotion and relisting are paused; use visibility:'private' to publish/replace/validate.",
   "\n- " + g.scopeSnapshot + " " + g.workerReach,
-  "\n- Find worker identifiers with workers_list; use the input schema's identifier type. " + g.creation,
+  "\n- " + g.creation,
+  "\n- Advice: fetch relevant facts. Simple creation: use its setup tool. Custom drafting: kit_authoring_guide(index/schema), then relevant sections. Reuse unchanged help; kit_app_tools(app) discovers business tools. Manager tools/list is management.",
   "\n- " + g.action + " " + g.actionReplay,
   "\n- " + g.runtimeOff,
-  "\n- " + g.time + " Watch the fleet with runs_feed and fleet_pulse. " + g.eventPolling + " Read run_get for results and cost.",
+  "\n- " + g.time + " Watch with runs_feed/fleet_pulse. " + g.eventPolling + " run_get reports results/cost.",
   "\n- " + g.secrets,
   "\n- " + g.support,
 ].join(" ");
 
 export const decisionInstructions = [
-  "WorkerKit Manager, decision profile: create, configure and run decision or hybrid workers. Before the first management call, call key_info; the user's request does not add scopes or worker reach.",
+  "WorkerKit Manager decision profile: configure/run Decision or Hybrid workers. Call key_info before management: the user's request adds no scopes or worker reach.",
   g.authority,g.skipped,g.uncertainWrite,g.sourceEvidence,
   firstWorkerEntry,
   "\n- " + g.scopeSnapshot + " " + g.workerReach,
-  "\n- Reuse an existing worker when it fits. Find identifiers with workers_list; follow the input schema. " + g.creation,
-  "\n- worker_get identifies modelType and readiness. Decision runs take sourceArgs, answers and maxItems, not prompt or modelSlug; hybrid accepts both sets. Read run_get for coverage and committed cost. Unknown coverage is not complete.",
-  "\n- Discover sources with kit_app_tools and read kit_authoring_guide before authoring. instruction_get reads setup; instruction_set changes saved answers. Editing a kit does not update installed workers.",
+  "\n- Reuse fitting workers. workers_list supplies IDs; follow the input schema. " + g.creation,
+  "\n- worker_get shows modelType/readiness. Decision takes sourceArgs/answers/maxItems, not prompt/modelSlug; hybrid accepts both. run_get reports coverage/committed cost. Unknown coverage is not complete.",
+  "\n- kit_app_tools(app) discovers sources; omit purpose beyond recipes. Manager tools/list is not the app inventory. Use the decision guide for creation; read schema/relevant sections for custom drafts. Reuse help. instruction_get reads setup; instruction_set saves answers. Kit edits never update workers.",
   "\n- " + g.runtimeOff + " " + g.time,
   "\n- " + g.secrets,
   "\n- " + g.support,
@@ -35,9 +36,9 @@ export const directoryInstructions = [
   "WorkerKit Directory: " + g.directory + " Nothing on this mount installs or publishes. " + g.sourceEvidence,
   "\n- " + publicPublisherIdentityPause + publicKitPublishingPause,
   "\n- Use directory_overview for filter vocabulary, kits_search to shortlist and kit_get to inspect exact permissions and content. Protected text is intentionally withheld.",
-  "\n- Before authoring, read kit_authoring_guide (index, then relevant schema and rules), kit_vocabulary and kit_app_tools. Validate and publish with publishKits on the Manager mount. Publish private and prove the installed worker; public publishing is temporarily paused.",
+  "\n- Advice needs relevant capability facts only. Custom drafting: kit_authoring_guide(index/schema), relevant sections and per-app vocabulary/tools; reuse unchanged reads. Validate/publish with publishKits on Manager. Publish private and prove the worker; public publishing is paused.",
   "\n- Language kits contain instructions; decision kits contain classification rules; hybrid combines them. Action kits expose selected tools without a model and are never deployed or run.",
-  "\n- Read workerkit_about first for product context and first-job examples; lead the user to a kit or the authenticated Workers connection to create one. Read further sections only as needed.",
+  "\n- Use workerkit_about for missing product context or first-job examples; lead into a kit or authenticated Workers creation. Fetch only needed sections.",
 ].join(" ");
 
 export const knowledgeInstructions = [
@@ -89,7 +90,7 @@ export const restInstructions = {
   ].join("\n\n"),
   directory: [
     productPurpose,
-    "Public, anonymous, read-only kit discovery; responses are identical for every caller. Read workerkit_about first. Kits combine exact pre-scoped permissions and schedules with language instructions, decision routing, both for hybrid, or selected Action tools with no model. directory_overview.modelTypes supplies the kinds and kits_search filters by them.",
+    "Public, anonymous, read-only kit discovery; responses are identical for every caller. Use workerkit_about when product context is needed. Kits combine exact pre-scoped permissions and schedules with language instructions, decision routing, both for hybrid, or selected Action tools with no model. directory_overview.modelTypes supplies the kinds and kits_search filters by them.",
     "Use directory_overview for filter vocabulary, kits_search to shortlist and kit_get to inspect permissions and content. Protected text is intentionally withheld. Nothing in this API installs or publishes: hand the human pageUrl ({siteUrl}/kit/{slug}), or use the authenticated Workers API with installKits.",
     g.sourceEvidence,
   ].join("\n\n"),

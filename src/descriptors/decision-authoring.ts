@@ -17,7 +17,7 @@ export const decisionQuestion = z.discriminatedUnion("type", [
 export const createDecisionWorker: ToolDescriptor = defineTool({
   name: "decision_worker_create",
   title: "Create Decision Worker",
-  description: managerAuthorityPreflight + "Create a reusable classifier to categorize, score, filter or triage data. Discover recipes with kit_app_tools(purpose:'decision'); kit_authoring_guide(section:'decision') has examples. Missing ordinary app connections do not prevent creation: create first, then prompt connection setup. Creates a private kit and worker atomically; optionally deploys, never runs. Questions and source mappings compile deterministically; source filters do not narrow read permissions. {{scope}} A selected-worker key gains the worker it creates. Reuse requestId and the identical body after a timeout; changed body returns 409. Returns tokenId, workerId, kitSlug, workerUrl, readiness, deployment/error, setupActions and nextCall. A deployment error leaves the worker saved, without that deployment's model/ceilings; never recreate it. Choice adds unclear; setup answers adjust categories/levels later. Returns no worker API secret. Arbitrary sources/routed actions: kit_validate → kit_publish(private) → kit_install.",
+  description: managerAuthorityPreflight + "Create a reusable classifier to categorize, score, filter or triage data. Discover recipes with kit_app_tools(purpose:'decision'); kit_authoring_guide(section:'decision') has examples. Missing ordinary app connections allow creation first, then setup. Creates a private kit and worker atomically; optionally deploys, never runs. Questions/source mappings compile deterministically; source filters do not narrow grants. {{scope}} A selected-worker key gains its created worker. Reuse requestId and identical body after timeout; changed body returns 409. Returns tokenId, workerId, kitSlug, workerUrl, readiness, deployment/error, setupActions and nextCall, no worker secret. A deployment error leaves the worker saved without those model/ceilings; never recreate it. Choice adds unclear; setup answers adjust categories/levels. Recipes are shortcuts: discover other sources/routed actions with kit_app_tools(app, omit purpose), then kit_validate → kit_publish(private) → kit_install → worker_deploy before running.",
   auth: "manager", method: "post", path: "/api/manage/decision-workers",
   strictInput: true,
   resultDescription: creationResultGuidance,
@@ -36,7 +36,7 @@ export const createDecisionWorker: ToolDescriptor = defineTool({
       args: z.record(z.unknown()).optional().describe("Arguments from the discovered recipe's argsSchema. No placeholders. Sheets requires fileId, range and columns."),
     }).strict(),
     questions: z.array(decisionQuestion).min(1).max(8).describe("Independent questions with unique keys. Choice: 1–20 options, excluding reserved unclear; name + description ≤200 chars. Score: ordered levels, lowest first. Noul: probability of a statement."),
-    confidenceFloor: z.number().min(0).max(1).describe("Required confidence threshold; uncertain choices/scores are flagged, not omitted. Not an accuracy guarantee."),
+    confidenceFloor: z.number().min(0).max(1).describe("Routing threshold, not an accuracy guarantee. Below-floor answers are flagged and still returned; this does not replace their labels with unclear."),
     maxItems: z.number().int().min(1).max(50).default(20),
     operatorId: z.string().uuid().optional(),
     deploy: z.boolean().default(false).describe("Create a hosted deployment too. Does not execute a run."),

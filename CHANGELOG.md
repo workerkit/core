@@ -6,6 +6,16 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.22] - 2026-10-29
+
+### Changed
+
+- `action_worker_options` without `app` returns the app inventory only, and `action_worker_create` requires an explicit `app` or `actionSpec`: there is no implicit app or hidden starter tool set. Slack prerequisites apply only to selected Slack tools, `app: customApi` returns setup metadata rather than selectable tools, and the README describes the same inventory-first flow.
+- `worker_tools` reports `invocationSource`, `effect`, `idempotencyRequired`, `keyFormat`, `workerCallsSupported` and `invocationManagerScopes` for each tool. `worker_tool_call`, its `idempotencyKey` parameter and `worker_tool_invocation` describe the key and receipt rules per source: native and MCP writes need a unique key and their reads none, while every private API operation, including reads, needs `managePrivateApiApps` with `invokeActions` and a `v1:<Unix timestamp>:<32-hex UUID>` key and leaves a receipt. Reusing a key with identical arguments replays the journal and never resends.
+- The workers, decision and directory instructions and the `kit_authoring_guide` description are shorter and separate advice, simple creation and custom drafting: fetch only the relevant `kit_authoring_guide` sections and per-app `kit_vocabulary` and `kit_app_tools` reads, reuse unchanged help, and treat the Manager tool list as management rather than the worker's business-app inventory. `workerkit_about` serves missing product context rather than a mandatory first read.
+- `kit_app_tools`, `kit_vocabulary` and `kit_validate` say that `purpose: decision` returns three shortcut recipes rather than a source ceiling, that `requires` is one operation-gate contribution rather than full authorization, that `canPublish` checks validity rather than whether grants fit the job, and that `effectivePermissions` and `defaultedApps` need review because defaults may include writes. `decision_worker_create` says that recipes are shortcuts to the general catalog and that `confidenceFloor` is a routing threshold which never replaces labels with `unclear`.
+- The kit `content` description says that an Action kit needs an explicit `actionSpec`, that Language kits may set `apps: []`, that explicit `apps` are preferred because `appCodes` defaults may grant writes, that one kit installs one worker and that `recommendedKit` installs nothing. `worker_permissions_set` says that `apps` is the native app set, that private API bindings stay on the dashboard with MCP tool bindings, and never to send `mcp:<slug>` entries. Kit references and `kit_install.githubSelection` no longer mention legacy numeric ids or a legacy single-account fallback.
+
 ## [0.3.21] - 2026-10-29
 
 ### Added

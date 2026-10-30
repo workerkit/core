@@ -103,7 +103,7 @@ export const guidanceCoverage: readonly GuidanceRule[] = [
     d("worker_delete", ["NEVER proves an earlier delete succeeded", "in-flight", "refund"]),
   ] },
   { id: "DIRECTORY-01", owner: "workerkit_about", checks: [
-    i(["Public and anonymous, read-only", "Nothing on this mount installs or publishes", "Read workerkit_about first"], ["directory"]),
+    i(["Public and anonymous, read-only", "Nothing on this mount installs or publishes", "workerkit_about for missing product context"], ["directory"]),
     d("kit_get", ["pageUrl", "signed-in human", "Manager /workers", "installKits"], all),
   ] },
   { id: "EVIDENCE-01", owner: "support_request_create", checks: [

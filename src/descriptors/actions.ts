@@ -27,19 +27,19 @@ export const actionDescriptors: readonly ToolDescriptor[] = [
   defineTool({
     name: "action_worker_options", title: "Action Worker Setup", auth: "manager", method: "get",
     path: "/api/manage/workers/action-options", strictInput: true,
-    description: managerAuthorityPreflight + "Get available apps, reviewed tool contracts, default tools and required connections for an Action worker: no model, instruction or deployment; invoke selected tools directly with worker_tool_call (modelType none). Slack tools need an active fixed bot: if no usable bot is returned, prompt connection setup and do not submit creation. Connection IDs and sender identities are server-owned. {{scope}} Creates and executes nothing.",
+    description: managerAuthorityPreflight + "Discover Action setup; creates/executes nothing. Omit app for the app inventory only, then choose an app for reviewed tools, defaults and connection requirements. Native/enabled reviewed MCP contracts can enter actionSpec; capabilities names source limits. app:customApi returns setup metadata, not selectable refs: API-only jobs use Language workers and dashboard finite-version bindings; no private API worker-slot calls. Action workers need no model/deployment. Actual Slack selections require a fixed active bot before creation; identities are server-owned. {{scope}}",
     schema: {
       operatorId: z.string().uuid().optional()
         .describe("The operator (workspace) to read connections for, as a GUID from apps_list → operators[]. Omit for the account's default operator."),
       app: z.string().min(1).max(128).optional()
-        .describe("The app whose tools and defaultTools to return, exactly as apps[].code lists it. Omit for Slack."),
+        .describe("Omit for app inventory only. Supply an apps[].code for that app's reviewed tools/defaultTools; customApi returns setup metadata only."),
     },
     annotations: READ_ONLY,
   }),
   defineTool({
     name: "action_worker_create", title: "Create Action Worker", auth: "manager", method: "post",
     path: "/api/manage/workers/actions", strictInput: true,
-    description: managerAuthorityPreflight + "Create a private Action kit and worker from action_worker_options. No model or deployment. Copies the app's default tools once; optional actionSpec selects up to 64 tools across apps. Slack tools require an active fixed bot: if none is available, prompt connection setup and do not submit creation. Missing ordinary app connections can be resolved after creation. Only explicit owner edits change installed tools. {{scope}} A selected-worker key gains the worker it creates. Reuse requestId with the same body after a timeout; never create a second worker to recover a lost response. Returns tokenId, workerId, kitSlug and modelType none, no worker key. Never deploy or run an Action worker: worker_run/worker_deploy refuse it with 400 action_worker_requires_invoke.",
+    description: managerAuthorityPreflight + "Create a private Action kit and worker after options discovery. Explicit app or actionSpec is required; there is no implicit app. app copies its reviewed defaults once; actionSpec selects up to 64 native/reviewed MCP tools across apps without needing app. Review any writes before creation. Private API refs are not selectable; follow source capabilities. Actual Slack tools require a fixed active bot; ordinary missing connections can follow creation. Only owner edits change tools. {{scope}} A selected-worker key gains its created worker. Reuse requestId/identical body after timeout; never recreate for recovery. Returns IDs/kitSlug/modelType none, no worker key. No model/deployment/run: worker_run/worker_deploy refuse with 400 action_worker_requires_invoke.",
     resultDescription: creationResultGuidance,
     footer: data => {
       if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
@@ -53,7 +53,7 @@ export const actionDescriptors: readonly ToolDescriptor[] = [
       name: z.string().min(1).max(100).describe("Name for the new worker and its private kit."),
       timeZoneId: z.string().trim().min(1).max(64).optional().describe(workerCreationTimezoneHint),
       app: z.string().min(1).max(128).optional()
-        .describe("The app whose default tools are copied when actionSpec is omitted, exactly as action_worker_options apps[].code lists it. Omit for Slack."),
+        .describe("Required when actionSpec is absent: an explicit app from action_worker_options. Copies that app's reviewed defaults once. Omit when selecting exact actionSpec tools."),
       slackConnectionId: z.number().int().positive().optional()
         .describe("Slack tools only: the bot connection to pin, an id from action_worker_options connections[] (app slack). A sole usable connection is selected automatically."),
       operatorId: z.string().uuid().optional()
@@ -65,13 +65,13 @@ export const actionDescriptors: readonly ToolDescriptor[] = [
   defineTool({
     name: "worker_tools", title: "List Action Worker Tools", auth: "manager", method: "get",
     path: p => `/api/manage/workers/${p.tokenId}/tools`, paramFilter: () => ({}), strictInput: true,
-    description: managerAuthorityPreflight + "Discover the saved tools, exact input/output schemas, connection and sender of an Action worker. {{scope}} Select a named tool and supply its declared inputs using worker_tool_call. Discovery does not grant execution permission; current policy is checked on each call. Each tools[] entry carries name (the toolName), inputSchema, outputSchema, readOnly (false = a write, which needs an idempotencyKey) and available (false = not callable now: the tool left the catalog, its contract changed or, for a Slack tool, its bot connection is missing, until the owner reviews and re-saves the selection). availableTools are not callable until the owner selects them.",
+    description: managerAuthorityPreflight + "Discover saved Action tools, exact schemas, connections and sender. {{scope}} Copy a returned name and inputs to worker_tool_call. Each tool reports invocationSource, effect, idempotencyRequired, keyFormat, workerCallsSupported and invocationManagerScopes; follow these rather than inferring from readOnly. Private API effect is the declared operation description; readOnly stays false even for reads, which still require a versioned key. available:false blocks calls pending setup/contract review. availableTools are not callable until explicitly selected. Discovery grants no access; policy is checked each call.",
     schema: worker, annotations: READ_ONLY,
   }),
   defineTool({
     name: "worker_tool_call", title: "Call Action Worker Tool", auth: "manager", method: "post",
     path: p => `/api/manage/workers/${p.tokenId}/tools/${encodeURIComponent(String(p.toolName))}/invoke`, strictInput: true,
-    description: managerAuthorityPreflight + "Execute exactly one saved Action worker tool with structured inputs, without a model. Discover worker_tools first. {{scope}} Cannot change tools, connection, sender or permissions. Supply a unique idempotencyKey for each intended write and reuse it for transport retries. A repeated key never resends: it replays the first answer, so a refusal with error.retryable true is retried later under a new key. For in_progress poll worker_tool_invocation. outcome_unknown means the app may have completed the action: do not automatically retry or issue a new key. Generic write receipts retain confirmation but not private app response content. Never resend to recover a lost response body. The answer is {invocationId, tool, status, result, error, replayed, contractVersion} with status succeeded | denied | failed | in_progress | outcome_unknown; invocationId is set on writes only (reads leave no receipt). Refusals before the app is reached use the {error, message, code} envelope: 403 tool_not_exposed, 409 tool_contract_changed (the owner must re-save the selection), 409 idempotency_conflict (same key, different arguments), 400 invalid_request (arguments that do not match inputSchema)." + INVOKE_SCOPE_NOTE,
+    description: managerAuthorityPreflight + "Invoke one saved Action tool without a model; discover worker_tools first and follow idempotencyRequired/keyFormat. {{scope}} Cannot change tools, connection, sender or permissions. Native/MCP writes need a unique key; reads need none. Every private API operation, including reads, needs managePrivateApiApps plus invokeActions and v1:<Unix timestamp>:<32-hex UUID>. Reuse a key and identical arguments to recover transport loss; it replays the journal, never resends. A retryable native/MCP refusal needs a new key for a later attempt. Poll in_progress with worker_tool_invocation. outcome_unknown: do not automatically retry or issue a new key. Native/MCP write receipts retain confirmation, not private response content; never resend to recover a body. Returns {invocationId,tool,status,result,error,replayed,contractVersion}; status succeeded|denied|failed|in_progress|outcome_unknown. Native/MCP reads leave no receipt; private API calls do. Pre-dispatch refusals use {error,message,code}: 403 tool_not_exposed, 409 tool_contract_changed (review/re-save), 409 idempotency_conflict (changed arguments), 400 invalid_request (schema mismatch)." + INVOKE_SCOPE_NOTE,
     schema: {
       ...worker,
       toolName: z.string().min(1).max(128)
@@ -80,7 +80,7 @@ export const actionDescriptors: readonly ToolDescriptor[] = [
       arguments: z.record(z.unknown())
         .describe("The tool's inputs, exactly as its inputSchema in worker_tools declares them, with their JSON types. Send {} for a tool that takes none."),
       idempotencyKey: z.string().min(1).max(128).regex(/^[!-~]+$/).optional()
-        .describe("Required on a write tool (readOnly false in worker_tools): 1-128 printable characters, one per intended write. The same key with the same arguments returns the stored receipt without calling the app again; with different arguments it is 409 idempotency_conflict. Reads need none."),
+        .describe("Follow worker_tools.idempotencyRequired/keyFormat: native/MCP writes use 1-128 printable characters; every private API call, even read, uses v1:<Unix timestamp>:<32-hex UUID>. Reuse only for identical arguments to recover the original journal; changed arguments return 409 idempotency_conflict."),
     },
     bodyBuilder: p => ({ contractVersion: p.contractVersion, arguments: p.arguments }),
     headerBuilder: (p): Record<string, string> => p.idempotencyKey ? { "Idempotency-Key": String(p.idempotencyKey) } : {},
@@ -92,7 +92,7 @@ export const actionDescriptors: readonly ToolDescriptor[] = [
     description: managerAuthorityPreflight + "Read an Action invocation's status and effect references. {{scope}} Does not execute or retry anything. Unknown outcomes must not be automatically resent. A write still in_progress after two minutes reads as outcome_unknown: check the app itself before deciding anything." + INVOKE_SCOPE_NOTE,
     schema: {
       ...worker,
-      invocationId: z.string().uuid().describe("The invocationId a worker_tool_call answer carried for a write."),
+      invocationId: z.string().uuid().describe("The invocationId returned for a native/MCP write or any private API invocation."),
     },
     annotations: READ_ONLY,
   }),
