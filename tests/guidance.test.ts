@@ -17,7 +17,7 @@ describe("canonical guidance", () => {
   });
 
   it("keeps the profile inventories and instructions aligned", () => {
-    expect(toolsForProfile("workers")).toHaveLength(122);
+    expect(toolsForProfile("workers")).toHaveLength(126);
     expect(toolsForProfile("decision")).toHaveLength(25);
     expect(toolsForProfile("decision").map(tool => tool.name)).toContain("workerkit_about");
     expect(toolsForProfile("decision").map(tool => tool.name)).not.toContain("worker_quality_set");

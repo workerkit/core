@@ -11,7 +11,7 @@ import {
   type ToolDescriptor,
 } from "../src/index.js";
 
-// The wire contract, pinned per descriptor: for all 129 tools, executeTool
+// The wire contract, pinned per descriptor: for all 133 tools, executeTool
 // against a recording fake client must produce exactly the {method, path,
 // query/opts, body} the live server produces today. Expected values are
 // derived from the server suite's manage-tools/directory tests so the two
@@ -20,7 +20,7 @@ import {
 interface RecordedCall {
   method: string;
   path: string;
-  opts: { params?: Record<string, unknown>; body?: unknown; token?: string; signal?: AbortSignal };
+  opts: { params?: Record<string, unknown>; body?: unknown; token?: string; signal?: AbortSignal; headers?: Record<string, string> };
 }
 
 const OK_RESULT: ApiResult = {
@@ -68,12 +68,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 121 manager + 8 anonymous descriptors, names unique, byName agrees", () => {
-    expect(manageDescriptors).toHaveLength(121);
+  it("ships exactly 125 manager + 8 anonymous descriptors, names unique, byName agrees", () => {
+    expect(manageDescriptors).toHaveLength(125);
     expect(directoryDescriptors).toHaveLength(8);
-    expect(allDescriptors).toHaveLength(129);
+    expect(allDescriptors).toHaveLength(133);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(129);
+    expect(new Set(names).size).toBe(133);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -82,13 +82,14 @@ describe("registry", () => {
     for (const descriptor of directoryDescriptors) expect(descriptor.auth).toBe("anonymous");
   });
 
-  it("pins {auth, method} for every one of the 129 descriptors", () => {
+  it("pins {auth, method} for every one of the 133 descriptors", () => {
     // The full name → auth/method table. A new/renamed tool or a changed verb
     // must show up here explicitly — no descriptor ships with an unpinned method.
     expect(
       allDescriptors.map((x) => `${x.name} ${x.auth} ${x.method}`).sort()
     ).toEqual(
       [
+        "worker_file_get manager get", "worker_file_delete manager delete", "worker_file_storage_get manager get", "worker_file_storage_set manager put",
         "api_apps_list manager get",
         "api_app_get manager get",
         "api_app_create manager post",
@@ -428,6 +429,52 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
     expect(c.method).toBe("post");
     expect(c.path).toBe("/api/manage/workers/runs/bulk");
     expect(wireBody(c.opts.body)).toEqual({ workers });
+  });
+
+  it("run_bulk sends the submission key as an Idempotency-Key header and keeps per-worker file inputs in the body", async () => {
+    const workers = [{ tokenId: 7, prompt: "process the invoice", inputs: [{ kind: "file", fileId: RUN_ID }] }];
+    const c = await run(d("run_bulk"), { workers, idempotencyKey: "bulk-submission-1" }, "manager");
+    expect(c.path).toBe("/api/manage/workers/runs/bulk");
+    expect(wireBody(c.opts.body)).toEqual({ workers });
+    expect(c.opts.headers).toEqual({ "Idempotency-Key": "bulk-submission-1" });
+    const plain = await run(d("run_bulk"), { workers: [{ tokenId: 7 }] });
+    expect(plain.opts.headers).toEqual({});
+    for (const invalid of [
+      { workers: [{ tokenId: 7, inputs: [{ kind: "json", value: {} }] }] },
+      { workers: [{ tokenId: 7, inputs: Array.from({ length: 4 }, () => ({ kind: "file", fileId: RUN_ID })) }] },
+      { workers: [{ tokenId: 7 }], idempotencyKey: "short" },
+    ]) {
+      await expect(run(d("run_bulk"), invalid)).rejects.toThrow();
+    }
+  });
+
+  it("the worker file tools address the worker's files route, with no query and no DELETE body", async () => {
+    const storage = await run(d("worker_file_storage_get"), { tokenId: 3 }, "manager");
+    expect(storage).toEqual({ method: "get", path: "/api/manage/workers/3/files/storage", opts: { params: {}, token: "manager" } });
+
+    const customer = await run(d("worker_file_storage_set"), {
+      tokenId: 3, ownership: "customer", bucket: "acme-worker-intake", serviceAccount: "wk-0123456789abcdef01234567@acme.iam.gserviceaccount.com",
+    }, "manager");
+    expect(customer.method).toBe("put");
+    expect(customer.path).toBe("/api/manage/workers/3/files/storage");
+    expect(wireBody(customer.opts.body)).toEqual({ ownership: "customer", bucket: "acme-worker-intake", serviceAccount: "wk-0123456789abcdef01234567@acme.iam.gserviceaccount.com" });
+    // An omitted bucket and service account stay off the wire.
+    const platform = await run(d("worker_file_storage_set"), { tokenId: 3, ownership: "platform" });
+    expect(wireBody(platform.opts.body)).toEqual({ ownership: "platform" });
+
+    const status = await run(d("worker_file_get"), { tokenId: 3, fileId: RUN_ID }, "manager");
+    expect(status).toEqual({ method: "get", path: `/api/manage/workers/3/files/${RUN_ID}`, opts: { params: {}, token: "manager" } });
+
+    const revoked = await run(d("worker_file_delete"), { tokenId: 3, fileId: RUN_ID });
+    expect(revoked.method).toBe("delete");
+    expect(revoked.path).toBe(`/api/manage/workers/3/files/${RUN_ID}`);
+    expect(revoked.opts.body).toBeUndefined();
+
+    // Strict inputs: a malformed id, an unknown field or an out-of-range worker never reach the wire.
+    for (const invalid of [{ tokenId: 3, fileId: "not-a-uuid" }, { tokenId: 3, fileId: RUN_ID, extra: true }, { tokenId: 0, fileId: RUN_ID }]) {
+      await expect(run(d("worker_file_get"), invalid)).rejects.toThrow();
+    }
+    expect(z.object(d("worker_file_storage_set").schema).strict().safeParse({ tokenId: 3, ownership: "shared" }).success).toBe(false);
   });
 
   it("run_score PUTs the grade, and null (clear) survives as null rather than being dropped", async () => {
@@ -862,6 +909,9 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
   it("forwards the caller's token on every manager call", async () => {
     // Strict descriptors are validated before the request, so these need complete inputs.
     const strictInputs: Record<string, Record<string, unknown>> = {
+      worker_file_get: { tokenId: 1, fileId: RUN_ID },
+      worker_file_delete: { tokenId: 1, fileId: RUN_ID },
+      worker_file_storage_set: { tokenId: 1, ownership: "platform" },
       knowledge_get: { id: RUN_ID },
       knowledge_configuration_set: { expectedVersion: 0, enabled: true, allWorkers: true },
       api_app_get: { appId: RUN_ID },

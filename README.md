@@ -6,7 +6,7 @@
 [![license](https://img.shields.io/npm/l/%40workerkit%2Fcore.svg)](LICENSE)
 
 The [WorkerKit](https://workerkit.ai) API client and tool registry for Node.js.
-It provides 121 authenticated management tools, 8 anonymous directory tools,
+It provides 125 authenticated management tools, 8 anonymous directory tools,
 and a shared execution engine for their HTTP requests.
 
 Descriptors include agent guidance, annotations and Zod input schemas. MCP
@@ -67,6 +67,55 @@ The client ships sensible production defaults: per-attempt timeouts under a
 whole-call deadline, bounded retries for idempotent methods only, a streamed
 response-size cap, and quota/rate-limit header extraction. `scrubSecrets` helps
 keep credentials out of logs.
+
+## Files with a run
+
+A hosted language worker can receive up to three PDF, PNG or JPEG files per run, 7 MiB each and
+15 MiB in total. Upload each file with `uploadWorkerFile`, then pass the returned references to
+`worker_run` as `inputs`:
+
+```ts
+import { WorkerKitClient, byName, executeTool, uploadWorkerFile } from "@workerkit/core";
+import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+
+const client = new WorkerKitClient({ baseUrl: "https://api.workerkit.ai" });
+const token = process.env.WK_MANAGER_KEY!;
+
+const invoice = await uploadWorkerFile(client, token, 42, {
+  name: "invoice.pdf",
+  contentType: "application/pdf",
+  bytes: await readFile("./invoice.pdf"),
+});
+const receipt = await executeTool(client, byName("worker_run")!, {
+  tokenId: 42,
+  prompt: "Process this invoice.",
+  inputs: [invoice],
+  idempotencyKey: randomUUID(),
+}, { token });
+```
+
+`uploadWorkerFile` is for your own code, not for a model. It reserves the upload with the API,
+sends the bytes straight to private storage over a short-lived signed URL, finalizes the file and
+returns only `{ kind: "file", fileId }`. The signed URL and the bytes never belong in tool
+results, prompts or logs; the manager key is never sent to storage; and a failed step revokes the
+reservation. It throws `FileUploadError`, whose `code` names the failed step and whose `upstream`
+carries the API's status, error code and message when the API refused the reservation or the
+finalize step. Clear your own byte buffers when you are done with them. The reserve and finalize
+routes are deliberately not tool descriptors.
+
+A run with files needs an `idempotencyKey` of 8 to 100 letters, digits, `-` or `_`, which
+`executeTool` sends as the `Idempotency-Key` header. If the response is lost, repeat the same key
+with the same references, in the same order, and the same run arguments to read the original run;
+a changed request is refused as a conflict. Each upload serves one run, so upload again for
+another.
+
+The worker needs the Files app's `receive_files` operation. Letting the model read a file needs
+`forward_attachments`, and saving the original to a destination app needs `export_files` plus
+that app's own permissions. `worker_file_storage_get` and `worker_file_storage_set` read and
+choose the worker's private intake storage, `worker_file_get` reads an upload's metadata and
+status, and `worker_file_delete` revokes an upload and removes its stored content. On platform
+storage the original is deleted once the runtime has received it. Only file inputs are supported.
 
 ## Kit publishing
 

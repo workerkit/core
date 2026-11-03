@@ -5,6 +5,7 @@
 // not get wrong is taught here.
 
 import { actionDescriptors } from "./actions.js";
+import { fileDescriptors } from "./files.js";
 import { apiAppDescriptors } from "./api-apps.js";
 import { appDiscoveryDescriptors } from "./app-discovery.js";
 import { compactDecisionReceipt } from "./decision-receipt.js";
@@ -233,6 +234,8 @@ const runWorker: ToolDescriptor = defineTool({
   auth: "manager",
   method: "post",
   schema: {
+    inputs: z.array(z.object({ kind: z.literal("file"), fileId: z.string().uuid() }).strict()).max(3).optional().describe("Finalized file references for this hosted language worker. Files only; JSON/preset inputs are not supported. No Base64, local paths or upload URLs. Requires receive_files and an idempotencyKey; forwarding and export are separate grants."),
+    idempotencyKey: z.string().min(8).max(100).regex(/^[A-Za-z0-9_-]+$/).optional().describe("Required with files. Keep this key and the identical request after a lost response; changed inputs conflict. A new run needs new platform uploads."),
     tokenId: z.number().int().min(1).describe(TOKEN_ID_HINT),
     prompt: z.string().max(8000).optional().describe(
       "Language and hybrid workers: what to do on THIS run (≤8000 chars). Omit to run the worker's standing instructions unchanged."
@@ -256,6 +259,7 @@ const runWorker: ToolDescriptor = defineTool({
   },
   path: (params) => `${API}/${params.tokenId}/run`,
   bodyBuilder: (params) => ({
+    inputs: params.inputs,
     prompt: params.prompt,
     modelSlug: params.modelSlug,
     decisionProfileId: params.decisionProfileId,
@@ -264,6 +268,7 @@ const runWorker: ToolDescriptor = defineTool({
     maxItems: params.maxItems,
     waitSeconds: params.waitSeconds,
   }),
+  headerBuilder: (p): Record<string, string> => p.idempotencyKey ? { "Idempotency-Key": String(p.idempotencyKey) } : {},
   annotations: TRIGGER,
 });
 
@@ -276,6 +281,7 @@ const runWorkersBulk: ToolDescriptor = defineTool({
   auth: "manager",
   method: "post",
   schema: {
+    idempotencyKey: runWorker.schema.idempotencyKey,
     workers: z
       .array(
         z.object({
@@ -291,6 +297,7 @@ const runWorkersBulk: ToolDescriptor = defineTool({
           modelSlug: z.string().max(64).optional().describe(
             runModelHint
           ),
+          inputs: runWorker.schema.inputs,
           decisionProfileId: runWorker.schema.decisionProfileId,
           sourceArgs: runWorker.schema.sourceArgs,
           answers: runWorker.schema.answers,
@@ -303,6 +310,7 @@ const runWorkersBulk: ToolDescriptor = defineTool({
   },
   path: `${API}/runs/bulk`,
   bodyBuilder: (params) => ({ workers: params.workers }),
+  headerBuilder: (p): Record<string, string> => p.idempotencyKey ? { "Idempotency-Key": String(p.idempotencyKey) } : {},
   annotations: TRIGGER,
 });
 
@@ -2270,6 +2278,7 @@ export const manageDescriptors: readonly ToolDescriptor[] = [
   ...supportDescriptors,
   createDecisionWorker,
   ...actionDescriptors,
+  ...fileDescriptors,
   setWorkerDecision,
   getKeyInfo,
   listWorkers,

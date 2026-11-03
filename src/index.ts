@@ -33,3 +33,4 @@ export { isSuccess, quotaSuffix, retryAfterSuffix } from "./errors.js";
 export { SECRET_PATTERNS, scrubSecrets } from "./redact.js";
 
 export { z } from "./zod.js";
+export * from "./files.js";

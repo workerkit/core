@@ -6,6 +6,18 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.23] - 2026-11-03
+
+### Added
+
+- `uploadWorkerFile(client, managerKey, tokenId, { name, contentType, bytes })` uploads one PDF, PNG or JPEG file of up to 7 MiB for a worker and returns the `{ kind: "file", fileId }` reference that a run takes. It reserves the upload with the API, checks that the signed destination is HTTPS on the storage host and that the ticket carries exactly the signed headers, sends the bytes without the manager key and without following redirects, finalizes the file, and revokes the reservation when any later step fails. `FileUploadError` names the failed step in `code` and, when the API refused the reservation or the finalize step, carries its status, error code and message in `upstream`. `MAX_INPUT_FILES`, `MAX_INPUT_FILE_BYTES`, `MAX_INPUT_RUN_BYTES`, `FileInput`, `WorkerFileStatus` and `FileUploadFailure` are exported with it.
+- `worker_run` and each `run_bulk` entry accept `inputs`, up to three finalized file references for a hosted language worker, and both tools take an `idempotencyKey` that travels as the `Idempotency-Key` header rather than in the body. A run with files requires the key: repeating it with the same request returns the original run, and a changed request is refused with `idempotency_conflict`.
+- `worker_file_storage_get` and `worker_file_storage_set` read and choose a worker's private file-intake storage, platform or a customer bucket with a delegated service account (`readWorkers`; writes need `manageAppsAndWorkers` and an account Admin). `worker_file_get` reads an upload's metadata and lifecycle status (`readWorkers`), and `worker_file_delete` revokes an upload and removes its stored content (`runWorkers`). The reserve and finalize routes are deliberately not tool descriptors, so file bytes and upload URLs stay out of model-visible tools and results. The workers profile serves 126 tools.
+
+### Changed
+
+- The backend contract is pinned to commit `71a13a508e6cf34fa1e2781d928d7eadf76a3718`, the release that added worker file intake.
+
 ## [0.3.22] - 2026-10-29
 
 ### Changed
