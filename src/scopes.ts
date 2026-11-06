@@ -15,8 +15,8 @@ export type ScopeRequirement =
   | { kind: "ownedCheckout"; scope: "requestWalletTopUp" };
 
 const groups: Partial<Record<ManagerScope, readonly string[]>> = {
-  readKnowledge: ["knowledge_sources", "knowledge_search", "knowledge_get", "knowledge_changes"],
-  manageKnowledge: ["knowledge_configuration_get", "knowledge_configuration_set"],
+  readKnowledge: ["knowledge_sources", "knowledge_search", "knowledge_get", "knowledge_changes", "knowledge_timeline"],
+  manageKnowledge: ["knowledge_configuration_get", "knowledge_configuration_set", "knowledge_timeline_status", "knowledge_timeline_enable"],
   managePrivateApiApps: ["api_app_create","api_app_update","api_app_validate","api_app_preview","api_app_publish","api_app_version_get","api_app_version_revoke"],
   readWorkers: ["worker_file_storage_get","worker_file_get","workers_list","worker_get","fleet_health","account_usage","memory_get","schedules_list","delivery_list","delivery_channels","instruction_get","instruction_versions","instruction_version_get","models_list","deployments_list","deployment_get","worker_permissions_get","worker_bindings_get","publisher_get_mine","my_kits_list","kit_scan_get","apps_list","model_keys_list","mcp_servers_list","mcp_server_get","action_worker_options","worker_tools","worker_quality_get"],
   readRuns: ["worker_runs","runs_feed","fleet_pulse","activity_feed","activity_summary","run_get","run_events","run_transcript","run_question"],

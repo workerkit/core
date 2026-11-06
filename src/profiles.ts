@@ -17,6 +17,7 @@ export const decisionToolNames = [
 // Company Knowledge has its own MCP mount; the fleet profiles carry every other manager tool.
 export const knowledgeToolNames = [
   "knowledge_sources","knowledge_search","knowledge_get","knowledge_changes","knowledge_configuration_get","knowledge_configuration_set",
+  "knowledge_timeline","knowledge_timeline_status","knowledge_timeline_enable",
 ] as const;
 
 export function toolsForProfile(profile:ToolProfile): readonly ToolDescriptor[] {

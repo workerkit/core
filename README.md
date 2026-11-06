@@ -6,7 +6,7 @@
 [![license](https://img.shields.io/npm/l/%40workerkit%2Fcore.svg)](LICENSE)
 
 The [WorkerKit](https://workerkit.ai) API client and tool registry for Node.js.
-It provides 125 authenticated management tools, 8 anonymous directory tools,
+It provides 128 authenticated management tools, 8 anonymous directory tools,
 and a shared execution engine for their HTTP requests.
 
 Descriptors include agent guidance, annotations and Zod input schemas. MCP
@@ -120,9 +120,13 @@ storage the original is deleted once the runtime has received it. Only file inpu
 ## Kit publishing
 
 Public kit publishing is temporarily paused, including promotion of a private
-kit, public replacement and relisting. Send `visibility: "private"` explicitly
-to `kit_validate`, `kit_publish` and `kit_replace`; an omitted visibility
-means public and is refused. Private kits publish and install as before.
+kit, public replacement and relisting. Send `visibility: "private"` or
+`visibility: "personal"` explicitly to `kit_validate`, `kit_publish` and
+`kit_replace`; an omitted visibility means public and is refused. Private kits
+are shared with every member of the account. Personal kits are visible and
+installable only by their creator and account administrators.
+`kit_make_private` with `personal: true` narrows an existing kit to that audience;
+`false` or omission shares it with the account.
 Public publisher identity is also hidden: catalog entries carry no publisher
 attribution and public publisher profiles return 404. Owners still manage
 their own publisher profile.
@@ -319,7 +323,36 @@ does not train model weights. These tools are on the full profile.
 
 ## Company knowledge
 
-The Knowledge descriptors expose source discovery, lexical search/browse, complete versioned content reads and change reconciliation. `toolsForProfile("knowledge")` returns the six of them for the dedicated Knowledge MCP mount; the workers and decision profiles do not carry them. Use `knowledge_sources`, `knowledge_search`, `knowledge_get` and `knowledge_changes` with `readKnowledge`. The service enforces current account, publication, audience and credential limits. `knowledge_configuration_get` and `knowledge_configuration_set` require `manageKnowledge`, account administrator authority and an unrestricted credential.
+The nine Knowledge descriptors cover published reports, dated source observations
+and their settings. `toolsForProfile("knowledge")` returns them for the dedicated
+Knowledge MCP mount; the workers and decision profiles do not carry them.
+
+Use `knowledge_sources`, `knowledge_search`, `knowledge_get` and
+`knowledge_changes` with `readKnowledge` to discover, search, read and reconcile
+published reports. The service enforces current account, publication, audience
+and credential limits. `knowledge_configuration_get` and
+`knowledge_configuration_set` require `manageKnowledge`, account administrator
+authority and an unrestricted credential.
+
+`knowledge_timeline` uses `readKnowledge` to read dated observations extracted
+from content workers received. Timeline activation is separate from report
+publication; report enrollment and history limits do not restrict timeline
+items. Members can read their own workers plus granted sources, within their
+credential's worker limits. Coverage follows actual worker reads and is
+incomplete: verify the live source before acting. `knowledge_timeline_status`
+requires `manageKnowledge` to mark a readable item done, dismissed or open.
+It records a reader decision without performing an action in the source app.
+
+`knowledge_timeline_enable` requires `manageKnowledge`, account administrator
+authority and an unrestricted credential. Read the current configuration version
+before enabling or disabling it. Enabling authorizes account-wide source-excerpt
+retention and model extraction billed to the account wallet, with a default
+$1 UTC-day cap. Pending excerpts expire after three days; processed candidate
+text is cleared and hashes expire after 30 days. Items expire 30 days after their
+date, with at most 5,000 open items per account. Disabling hides timeline reads
+and clears pending excerpts; existing items age out, and an already-started
+model call may still be billed. `knowledge_changes` covers reports only; use
+`observedSinceUtc` and reconcile statuses for timeline observations.
 
 Query planning and synthesis belong to the consuming agent. Empty queries browse; changed or revoked evidence requires citation/cache reconciliation. Retrieval does not invoke a model or grant live source-app access.
 

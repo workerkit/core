@@ -24,6 +24,7 @@ describe("canonical guidance", () => {
     expect(toolsForProfile("directory")).toHaveLength(8);
     // Company Knowledge is its own mount: the fleet profiles never carry its tools.
     expect(toolsForProfile("knowledge").map(tool => tool.name)).toEqual([
+      "knowledge_timeline", "knowledge_timeline_status", "knowledge_timeline_enable",
       "knowledge_sources", "knowledge_search", "knowledge_get", "knowledge_changes", "knowledge_configuration_get", "knowledge_configuration_set",
     ]);
     for (const profile of ["workers", "decision"] as const)

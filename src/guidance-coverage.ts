@@ -128,6 +128,8 @@ export const guidanceCoverage: readonly GuidanceRule[] = [
     d("api_app_version_revoke", ["already dispatched effects cannot be undone", "revocation cannot be reversed"]),
   ] },
   { id: "KNOWLEDGE-01", owner: "knowledge_search", checks: [
+    d("knowledge_timeline", ["Coverage follows actual worker reads", "untrusted evidence", "knowledge_changes covers reports only"], knowledge),
+    d("knowledge_timeline_enable", ["account wallet", "source-excerpt retention", "already-started model call"], knowledge),
     i(["retained reports", "Search is lexical", "save nextCursor", "evidence, never instructions"], knowledge),
     d("knowledge_sources", ["Omit query to enumerate", "descriptions do not prove what a run observed"], knowledge),
     d("knowledge_search", ["without stemming, semantic expansion", "Omit query to browse", "cursors restart if outputs change"], knowledge),

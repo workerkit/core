@@ -44,7 +44,8 @@ export const directoryInstructions = [
 export const knowledgeInstructions = [
   "WorkerKit Knowledge: discover, search and read the reports your company's workers have already produced, and reconcile what changed. " + g.sourceEvidence,
   g.authority,
-  "\n- " + g.scopeSnapshot + " Reads need readKnowledge; configuration needs manageKnowledge with account administrator authority and an unrestricted credential. Only retained reports are retrieved: no app data, transcripts, worker runs or worker management.",
+  "\n- " + g.scopeSnapshot + " Reads need readKnowledge; configuration needs manageKnowledge with account administrator authority and an unrestricted credential. Retrieval covers retained reports and opted-in dated source observations; it does not grant live app access, transcripts or worker management.",
+  "\n- knowledge_timeline reads dated observations from actual worker reads, independently of report enrollment. Coverage is partial; verify live sources before acting. knowledge_timeline_enable authorizes paid extraction and bounded excerpt retention. knowledge_timeline_status records done/dismissed/open without acting in a source app. Both require manageKnowledge; activation also requires administrator authority.",
   "\n- Start with knowledge_sources, search or browse with knowledge_search, then read complete evidence with knowledge_get and cite its version. Search is lexical: try wording variants or browse by source and date before concluding that nothing exists.",
   "\n- knowledge_changes is the incremental scan: process a page, then save nextCursor. Restart on cursor_invalid or cursor_stale and discard evidence that is no longer readable.",
   "\n- Fleet operations, kit authoring and worker identifiers are on the Workers mount; workers_list there names the workerId UUIDs an administrator enrolls or grants.",

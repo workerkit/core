@@ -6,6 +6,21 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.24] - 2026-11-05
+
+### Added
+
+- Company Knowledge timeline tools: `knowledge_timeline` reads dated items, `knowledge_timeline_status`
+  changes an item's status, and `knowledge_timeline_enable` controls account activation. These tools
+  use the dedicated Knowledge profile and its existing read/manage scopes.
+- Personal kit visibility on publish and replace, and the `personal` flag on `kit_make_private`.
+  Personal kits are visible to their creator and account Admins; private kits are shared with the account.
+
+### Changed
+
+- The backend contract is pinned to commit `9532ac1cf3c0ef35a79b8859c6a43b9219644abc`.
+- Knowledge documentation explains independent timeline activation, paid extraction, retention and reader permissions.
+
 ## [0.3.23] - 2026-11-03
 
 ### Added

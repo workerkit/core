@@ -1751,9 +1751,9 @@ const LISTING_SCHEMA = {
   categorySlugs: z.array(z.string()).min(1).max(8).describe(
     "1-8 browse-category slugs from kit_vocabulary's categories (jobFamilies / roles / industries). An unknown slug fails the publish."
   ),
-  visibility: z.enum(["public", "private"]).optional().describe(
+  visibility: z.enum(["public", "private", "personal"]).optional().describe(
     publicKitPublishingPause +
-    "'private' (recommended first) = installable only by this account, no supply-chain scan; 'public' (default) = listed in the directory after the fail-closed scan."
+    "'private' (recommended first) = shared with every member of this account, hidden from the directory, no supply-chain scan; 'personal' = private and narrowed to its creator and the account's Admins; 'public' (default) = listed in the directory after the fail-closed scan."
   ),
   isProtected: z.boolean().optional().describe(
     "true withholds instruction, run commands, whenToUse and reference bodies; installers keep a working worker and permissions. Independent of visibility; new publishes default false (unprotected)."
@@ -1858,7 +1858,7 @@ const publishKit: ToolDescriptor = defineTool({
   title: "Publish Kit",
   description:
     publicKitPublishingPause +
-    "Publish a NEW kit. {{scope}} Exactly one of authored content or sourceWorkerId (reachable worker; outside selection:404). Source copies instruction/text/permissions/schedules/triggers, but never rule VALUES, only their existence. Protected-kit source text:403, never retry. NOT idempotent: never retry success; on timeout inspect my_kits_list. Private (recommended first) installs only within this account; kit_install its slug to create a worker. Public is default and requires fail-closed scanning;503 kit_scan_unavailable:retry later with SAME body or publish private. 400 names first rule failure; kit_validate shows all. First-publish publisherName conflict:409. Limits:20 publishes/hour/account and100 public kits; unlisted/admin-removed keep slots, private unlimited. After public success, semantic scanning can still flag the listing minutes later: my_kits_list/kit_scan_get." + AUTHORING_FLOW_NOTE,
+    "Publish a NEW kit. {{scope}} Exactly one of authored content or sourceWorkerId (reachable worker; outside selection:404). Source copies instruction/text/permissions/schedules/triggers, but never rule VALUES, only their existence. Protected-kit source text:403, never retry. NOT idempotent: never retry success; on timeout inspect my_kits_list. Private (recommended first) installs only within this account; kit_install its slug to create a worker. Public is default and requires fail-closed scanning;503 kit_scan_unavailable:retry later with SAME body or publish private. 400 names first rule failure; kit_validate shows all. First-publish publisherName conflict:409. Limits: 20 publishes/hour/account and 1,000 public kits; unlisted/admin-removed keep slots, private unlimited. After public success, semantic scanning can still flag the listing minutes later: my_kits_list/kit_scan_get." + AUTHORING_FLOW_NOTE,
   auth: "manager",
   method: "post",
   schema: {
@@ -1989,13 +1989,18 @@ const makeKitPrivate: ToolDescriptor = defineTool({
   name: "kit_make_private",
   title: "Make Kit Private",
   description:
-    "Move a listing into this account's private library: still installable by this account (kit_install), hidden from the directory. Works from any status except removedByAdmin. Making it public again is kit_replace with visibility 'public', which re-runs the scan. {{scope}}" +
+    "Move a listing into this account's private library: still installable by this account (kit_install), hidden from the directory. personal:true narrows it to its creator and the account's Admins instead; on a private kit the call flips that either way. Works from any status except removedByAdmin. Making it public again is kit_replace with visibility 'public', which re-runs the scan. {{scope}}" +
     NEW_SCOPE_NOTE,
   auth: "manager",
   method: "post",
-  schema: { kitRef: kitRefParam },
+  schema: {
+    kitRef: kitRefParam,
+    personal: z.boolean().optional().describe(
+      "true = only the kit's creator and account Admins see and install it (visibility 'personal'); false or omitted = every member of the account (visibility 'private')."
+    ),
+  },
   path: (params) => kitRefPath(params, "/make-private"),
-  bodyBuilder: () => ({}),
+  bodyBuilder: (params) => (params.personal === undefined ? {} : { personal: params.personal }),
   annotations: UPDATE,
 });
 

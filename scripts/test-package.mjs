@@ -46,6 +46,13 @@ try {
       assert.ok(byName('support_request_create'));
       assert.ok(byName('worker_timezone_set'));
       assert.ok(byName('kit_install').schema.timeZoneId);
+      for (const name of ['knowledge_timeline', 'knowledge_timeline_status', 'knowledge_timeline_enable']) {
+        assert.ok(byName(name));
+      }
+      for (const name of ['kit_validate', 'kit_publish', 'kit_replace']) {
+        assert.equal(byName(name).schema.visibility.parse('personal'), 'personal');
+      }
+      assert.ok(byName('kit_make_private').schema.personal);
       assert.equal(new Set(allDescriptors.map(d => d.name)).size, allDescriptors.length);
       await new WorkerKitClient({ baseUrl: 'https://api.workerkit.ai' }).close();
     `], { cwd: consumer, stdio: "inherit" });

@@ -11,7 +11,7 @@ import {
   type ToolDescriptor,
 } from "../src/index.js";
 
-// The wire contract, pinned per descriptor: for all 133 tools, executeTool
+// The wire contract, pinned per descriptor: for all 136 tools, executeTool
 // against a recording fake client must produce exactly the {method, path,
 // query/opts, body} the live server produces today. Expected values are
 // derived from the server suite's manage-tools/directory tests so the two
@@ -68,12 +68,12 @@ const OPERATOR_ID = "6e6f6f70-0000-4000-8000-000000000001";
 const RESOURCE_ID = "6e6f6f70-0000-4000-8000-000000000002";
 
 describe("registry", () => {
-  it("ships exactly 125 manager + 8 anonymous descriptors, names unique, byName agrees", () => {
-    expect(manageDescriptors).toHaveLength(125);
+  it("ships exactly 128 manager + 8 anonymous descriptors, names unique, byName agrees", () => {
+    expect(manageDescriptors).toHaveLength(128);
     expect(directoryDescriptors).toHaveLength(8);
-    expect(allDescriptors).toHaveLength(133);
+    expect(allDescriptors).toHaveLength(136);
     const names = allDescriptors.map((x) => x.name);
-    expect(new Set(names).size).toBe(133);
+    expect(new Set(names).size).toBe(136);
     for (const descriptor of allDescriptors) {
       expect(byName(descriptor.name)).toBe(descriptor);
     }
@@ -82,7 +82,7 @@ describe("registry", () => {
     for (const descriptor of directoryDescriptors) expect(descriptor.auth).toBe("anonymous");
   });
 
-  it("pins {auth, method} for every one of the 133 descriptors", () => {
+  it("pins {auth, method} for every one of the 136 descriptors", () => {
     // The full name → auth/method table. A new/renamed tool or a changed verb
     // must show up here explicitly — no descriptor ships with an unpinned method.
     expect(
@@ -103,6 +103,9 @@ describe("registry", () => {
         "action_worker_create manager post",
         "worker_tools manager get",
         "worker_quality_get manager get",
+        "knowledge_timeline manager post",
+        "knowledge_timeline_status manager put",
+        "knowledge_timeline_enable manager put",
         "knowledge_sources manager get",
         "knowledge_search manager post",
         "knowledge_get manager get",
@@ -913,6 +916,8 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
       worker_file_delete: { tokenId: 1, fileId: RUN_ID },
       worker_file_storage_set: { tokenId: 1, ownership: "platform" },
       knowledge_get: { id: RUN_ID },
+      knowledge_timeline_status: { id: RUN_ID, status: "done" },
+      knowledge_timeline_enable: { expectedVersion: 0, enabled: true },
       knowledge_configuration_set: { expectedVersion: 0, enabled: true, allWorkers: true },
       api_app_get: { appId: RUN_ID },
       api_app_create: { name: "Test", definition: { schemaVersion: 1, origin: "https://api.example.com", operations: [{}] } },
@@ -948,6 +953,68 @@ describe("manager wire contract (mirrors the server manage-tools suite)", () => 
   });
 });
 
+describe("timeline wire contract", () => {
+  it("sends filters in a read body and separates item status from account opt-in", async () => {
+    const filters = { fromUtc: "2026-11-05T12:00:00-06:00", status: [], kinds: ["ask"], workerIds: [RUN_ID], cursor: "opaque", limit: 10 };
+    const read = await run(d("knowledge_timeline"), filters);
+    expect(read.method).toBe("post");
+    expect(read.path).toBe("/api/manage/knowledge/timeline");
+    expect(wireBody(read.opts.body)).toEqual(filters);
+    const status = await run(d("knowledge_timeline_status"), { id: RUN_ID, status: "done" });
+    expect(status.path).toBe(`/api/manage/knowledge/timeline/${RUN_ID}/status`);
+    expect(wireBody(status.opts.body)).toEqual({ status: "done" });
+    const setting = await run(d("knowledge_timeline_enable"), { enabled: false, expectedVersion: 3 });
+    expect(setting.path).toBe("/api/manage/knowledge/timeline/settings");
+    expect(wireBody(setting.opts.body)).toEqual({ enabled: false, expectedVersion: 3 });
+  });
+
+  it("rejects malformed filters and reader status changes before dispatch", async () => {
+    const { client, calls } = recordingClient();
+    for (const params of [
+      { status: ["completed"] },
+      { workerIds: ["not-a-uuid"] },
+      { fromUtc: "2026-11-05" },
+      { observedSinceUtc: "not-a-date" },
+    ]) {
+      await expect(executeTool(client, d("knowledge_timeline"), params)).rejects.toBeInstanceOf(z.ZodError);
+    }
+    for (const params of [
+      { id: "not-a-uuid", status: "done" },
+      { id: RUN_ID, status: "passed" }, // Computed by the service, not a reader decision.
+    ]) {
+      await expect(executeTool(client, d("knowledge_timeline_status"), params)).rejects.toBeInstanceOf(z.ZodError);
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it("requires explicit opt-in and a valid configuration version before dispatch", async () => {
+    const { client, calls } = recordingClient();
+    for (const params of [
+      { expectedVersion: 0 },
+      { enabled: true },
+      { enabled: "true", expectedVersion: 0 },
+      { enabled: true, expectedVersion: -1 },
+      { enabled: true, expectedVersion: 0.5 },
+    ]) {
+      await expect(executeTool(client, d("knowledge_timeline_enable"), params)).rejects.toBeInstanceOf(z.ZodError);
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses unsupported execution controls instead of silently issuing requests", async () => {
+    const { client, calls } = recordingClient();
+    const inputs: Record<string, Record<string, unknown>> = {
+      knowledge_timeline: {},
+      knowledge_timeline_status: { id: RUN_ID, status: "done" },
+      knowledge_timeline_enable: { enabled: true, expectedVersion: 0 },
+    };
+    for (const [name, params] of Object.entries(inputs)) {
+      await expect(executeTool(client, d(name), { ...params, preview: true })).rejects.toBeInstanceOf(z.ZodError);
+    }
+    expect(calls).toEqual([]);
+  });
+});
+
 describe("kit authoring wire contract (the publishKits lane + the permissions read)", () => {
   const body = {
     name: "Standup Digest",
@@ -956,6 +1023,20 @@ describe("kit authoring wire contract (the publishKits lane + the permissions re
     visibility: "private",
     content: { instructionContent: "You are [worker-name].", appCodes: ["email"] },
   };
+
+  it("preserves personal visibility and both directions of the private audience change", async () => {
+    for (const name of ["kit_validate", "kit_publish", "kit_replace"]) {
+      const descriptor = d(name);
+      const input = z.object(descriptor.schema).parse({ ...body, visibility: "personal", kitRef: "private-helper" });
+      const call = await run(descriptor, input);
+      expect(wireBody(call.opts.body)).toMatchObject({ visibility: "personal" });
+    }
+    for (const personal of [true, false]) {
+      const call = await run(d("kit_make_private"), { kitRef: "private-helper", personal });
+      expect(call.path).toBe("/api/manage/kits/private-helper/make-private");
+      expect(wireBody(call.opts.body)).toEqual({ personal });
+    }
+  });
 
   it("worker_permissions_get GETs the worker's permissions with an empty query", async () => {
     const c = await run(d("worker_permissions_get"), { tokenId: 42 }, "t");
