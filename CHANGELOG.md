@@ -6,6 +6,16 @@ and the package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.25] - 2026-11-06
+
+### Changed
+
+- App connection guidance uses each live recipe's browser setup URL, preserving account and operator
+  context through sign-in. Human-held credentials stay in the browser; callers re-read connection
+  status after setup instead of treating an opened link as success.
+- Direct credential connections remain available through `app_connect`.
+- The backend contract is pinned to commit `f8dd68c76c3d060e88088f9a07f775df4e44d875`.
+
 ## [0.3.24] - 2026-11-05
 
 ### Added
